@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.7
+// @version      1.0.8
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.7）
+ * 产品契约（v1.0.8）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.7';
+  const APP_VERSION = '1.0.8';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -2210,8 +2210,10 @@
     }
     .ii-message-selection {
       display: flex; align-items: center; gap: 6px; margin: -2px 0 7px; color: #4857bd;
-      font-size: 10px; font-weight: 700;
+      padding: 0; border: 0; outline-offset: 3px; background: transparent; cursor: pointer;
+      font-size: 10px; font-weight: 700; text-align: left;
     }
+    .ii-message-selection:hover { color: #273995; text-decoration: underline; text-underline-offset: 2px; }
     .ii-image-bubble {
       width: 100%; max-width: 1050px; margin: 0 auto 18px; overflow: hidden;
       border: 1px solid var(--ii-line); border-radius: 16px 16px 16px 5px; background: var(--ii-surface);
@@ -4035,10 +4037,10 @@
   }
 
   function renderConversationMessages(conversation) {
-    return (conversation.messages || []).map((message) => `
+    return (conversation.messages || []).map((message, messageIndex) => `
       <div class="ii-message-row ${message.role === 'user' ? 'user' : 'assistant'}">
         <div class="ii-bubble">
-          ${message.role === 'user' && message.selection ? `<span class="ii-message-selection">${icon('scan', 13)}${escapeHTML(chatSelectionLabel(message.selection))}</span>` : ''}
+          ${message.role === 'user' && message.selection ? `<button class="ii-message-selection" type="button" data-action="restore-chat-selection" data-message-index="${messageIndex}" title="在图片上重新显示这次选取的位置">${icon('scan', 13)}${escapeHTML(chatSelectionLabel(message.selection))}</button>` : ''}
           ${renderMarkdown(message.content)}
         </div>
       </div>`).join('');
@@ -4684,6 +4686,19 @@
     rerenderAnalysisPreservingScroll({ focusComposer: true });
   }
 
+  function restoreChatSelection(messageIndex) {
+    const message = state.current?.messages?.[messageIndex];
+    const selection = normalizeChatSelection(message?.selection);
+    if (!selection) return;
+    state.chatSelection = selection;
+    state.chatSelectionMode = false;
+    state.chatComposerOpen = false;
+    chatSelectionDrag = null;
+    state.tab = 'analysis';
+    renderApp();
+    focusAnalysisImage(selection.imageIndex);
+  }
+
   function chatSelectionPointer(layer, event) {
     const rect = layer.getBoundingClientRect();
     const px = clamp(event.clientX - rect.left, 0, Math.max(1, rect.width));
@@ -4884,6 +4899,7 @@
     if (action === 'toggle-chat-composer') toggleChatComposer();
     if (action === 'select-chat-tool') selectChatSelectionTool(button.dataset.tool);
     if (action === 'clear-chat-selection') clearChatSelection();
+    if (action === 'restore-chat-selection') restoreChatSelection(Number(button.dataset.messageIndex));
     if (action === 'batch-mode') enterBatchMode();
     if (action === 'add-current-site') addSiteRuleRow(button.closest('form'), true);
     if (action === 'add-empty-site') addSiteRuleRow(button.closest('form'), false);
