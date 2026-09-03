@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" role="img" aria-labelledby="title description">
+  <title id="title">图像深读 · Image Insight</title>
+  <desc id="description">由取景框与眼睛组成的图像深读品牌标志</desc>
+
+  <rect x="20" y="20" width="120" height="120" rx="30" fill="#172033"/>
+  <g transform="translate(32 32) scale(4)" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+    <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+    <path d="M7 12s2-3 5-3 5 3 5 3-2 3-5 3-5-3-5-3Z"/>
+    <circle cx="12" cy="12" r="1.35" fill="#7384FF" stroke="none"/>
+  </g>
+
+  <text x="172" y="76" fill="#172033" font-family="Inter, 'Noto Sans SC', 'Microsoft YaHei', sans-serif" font-size="44" font-weight="650">图像深读</text>
+  <text x="174" y="112" fill="#6E778A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="500" letter-spacing="6">IMAGE INSIGHT</text>
+</svg>

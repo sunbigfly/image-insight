@@ -1,6 +1,6 @@
-# 图像深读 · Image Insight
-
 <div align="center">
+  <img src="figures/logo.svg" width="52%" alt="图像深读 · Image Insight">
+  <br>
   <strong>让网页图片从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
@@ -8,11 +8,13 @@
   <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
-## 1. 介绍
+---
+
+### 1. 介绍
 
 图像深读是一款网页图片解析用户脚本。它会在图片旁生成可视化批注，呈现原文、翻译与上下文含义，并支持围绕图片继续提问。
 
-## 2. 核心能力
+### 2. 核心能力
 
 - **区域解析**：识别图片中的文字、对象、关系与语气。
 - **可视化批注**：通过锚点、连线与信息卡定位解析内容。
@@ -21,7 +23,7 @@
 - **本地历史**：保存解析记录与压缩预览，不保存原图。
 - **批量处理**：一次联合解析最多 8 张图片。
 
-## 3. 快速开始
+### 3. 快速开始
 
 1. [从 Greasy Fork 安装脚本](https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight)。
 2. 从油猴菜单打开设置，填写兼容 OpenAI Responses API 的地址与密钥。
@@ -29,10 +31,10 @@
 
 默认支持 Reddit 与 X/Twitter；其他网站可通过 URL 与 CSS 选择器规则接入。
 
-## 4. 隐私
+### 4. 隐私
 
 只有主动解析时才会发送图片及可查看的页面上下文。API Key 仅保存在油猴脚本存储中，不写入网页、历史记录或导出内容。
 
-## 5. License
+### 5. License
 
 本项目采用 [MIT License](LICENSE)。
