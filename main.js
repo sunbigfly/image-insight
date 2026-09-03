@@ -4,6 +4,7 @@
 // @version      1.0.0
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
+// @license      MIT
 // @homepageURL  https://github.com/sunbigfly/image-insight
 // @supportURL   https://github.com/sunbigfly/image-insight/issues
 // @match        http://*/*
