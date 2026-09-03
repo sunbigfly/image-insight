@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.5
+// @version      1.0.6
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.5）
+ * 产品契约（v1.0.6）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -39,13 +39,14 @@
  * 10. 不在数据库保存原图或 API Key；API Key 仅存于油猴脚本存储，但该存储并非加密保险箱。
  * 11. 相同图片按规范化 URL 指纹或原始内容 SHA-256 命中本地解析缓存，不重复调用视觉解析。
  * 12. 页面常显历史入口；设置从油猴菜单独立打开，不占用图片解析与历史之间的页签。
+ * 13. 对话入口默认收起；可用锚点、方框、圆形、自由画笔或箭头选取图片位置，并把归一化坐标作为追问上下文。
  */
 
 (function () {
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.5';
+  const APP_VERSION = '1.0.6';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -202,7 +203,12 @@
     download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
     export: '<path d="M14 3h7v7"/><path d="m21 3-9 9"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     batch: '<path d="M11 6H3M11 12H3M11 18H3"/><path d="M18 9v6M15 12h6"/>',
-    check: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/>'
+    check: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/>',
+    point: '<circle cx="12" cy="12" r="3"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',
+    rectangle: '<rect x="3" y="4" width="18" height="16" rx="1"/>',
+    ellipse: '<ellipse cx="12" cy="12" rx="9" ry="7"/>',
+    brush: '<path d="m14.5 4.5 5 5L9 20H4v-5Z"/><path d="m12.5 6.5 5 5"/>',
+    arrow: '<path d="M5 19 19 5"/><path d="M10 5h9v9"/>'
   };
 
   const state = {
@@ -228,6 +234,10 @@
     historyQuery: '',
     historyHostFilter: '',
     historyTypeFilter: '',
+    chatComposerOpen: false,
+    chatSelectionMode: false,
+    chatSelectionTool: 'point',
+    chatSelection: null,
     settingsSection: 'api',
     batchMode: false,
     backgrounded: false,
@@ -899,6 +909,68 @@
     ].join('\n');
   }
 
+  function buildChatSelectionContext(conversation, selection) {
+    const value = normalizeChatSelection(selection);
+    const imageAnalysis = value ? conversation.analysis?.images?.[value.imageIndex] : null;
+    if (!value || !imageAnalysis) return '';
+    const selectionBounds = (() => {
+      if (value.kind === 'point') return { left: value.x, top: value.y, right: value.x, bottom: value.y };
+      if (['box', 'ellipse'].includes(value.kind)) return { left: value.x, top: value.y, right: value.x + value.width, bottom: value.y + value.height };
+      if (value.kind === 'arrow') return { left: value.x2, top: value.y2, right: value.x2, bottom: value.y2 };
+      const xs = value.points.map((point) => point[0]);
+      const ys = value.points.map((point) => point[1]);
+      return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+    })();
+    const center = { x: (selectionBounds.left + selectionBounds.right) / 2, y: (selectionBounds.top + selectionBounds.bottom) / 2 };
+    const regions = orderRegionsByAnchor(imageAnalysis.regions || []);
+    const regionGeometry = (region) => {
+      const box = region.bbox || {};
+      const left = Number(box.x) || 0;
+      const top = Number(box.y) || 0;
+      const right = left + (Number(box.width) || 0);
+      const bottom = top + (Number(box.height) || 0);
+      const x = Number.isFinite(Number(region.anchor?.x)) ? Number(region.anchor.x) : (left + right) / 2;
+      const y = Number.isFinite(Number(region.anchor?.y)) ? Number(region.anchor.y) : (top + bottom) / 2;
+      const intersects = value.kind === 'point'
+        ? value.x >= left && value.x <= right && value.y >= top && value.y <= bottom
+        : selectionBounds.left <= right && selectionBounds.right >= left && selectionBounds.top <= bottom && selectionBounds.bottom >= top;
+      return { region, intersects, distance: Math.hypot(x - center.x, y - center.y) };
+    };
+    const candidates = regions.map(regionGeometry);
+    const intersecting = candidates.filter((item) => item.intersects);
+    const related = (intersecting.length ? intersecting : candidates.sort((a, b) => a.distance - b.distance).slice(0, 1))
+      .slice(0, 3)
+      .map(({ region }) => ({
+        label: region.label_zh || '',
+        source_text: region.source_text || '',
+        translation_zh: region.translation_zh || '',
+        insight_zh: region.insight_zh || ''
+      }));
+    const coordinates = (() => {
+      if (value.kind === 'point') return `锚点 x=${value.x}, y=${value.y}`;
+      if (value.kind === 'box') return `方框 x=${value.x}, y=${value.y}, width=${value.width}, height=${value.height}`;
+      if (value.kind === 'ellipse') return `椭圆 x=${value.x}, y=${value.y}, width=${value.width}, height=${value.height}`;
+      if (value.kind === 'arrow') return `箭头起点 x=${value.x1}, y=${value.y1}；终点 x=${value.x2}, y=${value.y2}`;
+      const step = Math.max(1, Math.ceil(value.points.length / 80));
+      const points = value.points.filter((_, index) => index % step === 0 || index === value.points.length - 1);
+      return `自由画笔轨迹：${points.map((point) => `(${point[0]},${point[1]})`).join(' → ')}`;
+    })();
+    return [
+      '<selected_image_location>',
+      `图片序号：${value.imageIndex + 1}`,
+      `图片标题：${imageAnalysis.title_zh || ''}`,
+      `坐标系：整张图片归一化为 0–1000；${coordinates}`,
+      `邻近或相交的已有批注：${JSON.stringify(related)}`,
+      '请重点依据该锚点、选区、轨迹或箭头指向位置附近的视觉证据回答；若现有解析不足以支持结论，要明确说明不确定性。',
+      '</selected_image_location>'
+    ].join('\n');
+  }
+
+  function chatRequestContent(conversation, content, selection) {
+    const selectionContext = buildChatSelectionContext(conversation, selection);
+    return selectionContext ? `${selectionContext}\n\n用户问题：${content}` : content;
+  }
+
   function gmRequest(options) {
     let handle;
     const promise = new Promise((resolve, reject) => {
@@ -1514,6 +1586,7 @@
       messages: (conversation.messages || []).map((message) => ({
         role: message.role,
         content: String(message.content || ''),
+        selection: normalizeChatSelection(message.selection),
         createdAt: message.createdAt || Date.now()
       }))
     };
@@ -1715,6 +1788,7 @@
       model: state.config.model,
       messages: []
     };
+    resetChatInteraction();
     state.current = conversation;
     state.backgrounded = runInBackground;
     state.open = !runInBackground;
@@ -1910,11 +1984,12 @@
     showToast('原网页图片已经离开页面，请重新选择后解析。', true);
   }
 
-  async function sendChat(text) {
+  async function sendChat(text, requestedSelection = null) {
     const conversation = state.current;
-    const content = cleanText(text);
+    const selection = normalizeChatSelection(requestedSelection);
+    const content = cleanText(text) || (selection ? '请深入解读我选取的这个图片位置。' : '');
     if (!conversation?.analysis || !content || conversation.status === 'chat-loading') return;
-    conversation.messages.push({ role: 'user', content, createdAt: Date.now() });
+    conversation.messages.push({ role: 'user', content, selection, createdAt: Date.now() });
     conversation.status = 'chat-loading';
     conversation.error = '';
     conversation.updatedAt = Date.now();
@@ -1926,7 +2001,7 @@
     const body = {
       model: state.config.model || conversation.model,
       instructions: buildChatInstructions(conversation),
-      input: [{ role: 'user', content }],
+      input: [{ role: 'user', content: chatRequestContent(conversation, content, selection) }],
       temperature: clamp(state.config.temperature, 0, 2),
       reasoning: reasoningConfig(),
       max_output_tokens: 2400,
@@ -1951,7 +2026,10 @@
         if (streamedAnswer || !body.previous_response_id || ![400, 404].includes(error.status)) throw error;
         const fallback = {
           ...body,
-          input: conversation.messages.slice(-12).map((message) => ({ role: message.role, content: message.content }))
+          input: conversation.messages.slice(-12).map((message) => ({
+            role: message.role,
+            content: message.role === 'user' ? chatRequestContent(conversation, message.content, message.selection) : message.content
+          }))
         };
         delete fallback.previous_response_id;
         response = await apiStream(fallback, { kind: 'chat', onDelta });
@@ -1999,6 +2077,7 @@
   let batchDock;
   let backgroundTaskButton;
   let toastTimer;
+  let chatSelectionDrag = null;
   const completedImageAnalyses = new WeakMap();
 
   const APP_CSS = `
@@ -2081,6 +2160,13 @@
     }
     .ii-tab:disabled { opacity: .38; cursor: not-allowed; }
     .ii-header-spacer { flex: 1; }
+    .ii-chat-toggle {
+      min-height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px;
+      border: 1px solid var(--ii-line); border-radius: 9px; color: var(--ii-muted); background: rgba(255,255,255,.72);
+      cursor: pointer; font-weight: 650; font-size: 12px;
+    }
+    .ii-chat-toggle:hover, .ii-chat-toggle[aria-expanded="true"] { color: var(--ii-ink); border-color: #b9b4aa; background: white; }
+    .ii-chat-toggle:disabled { opacity: .5; cursor: not-allowed; }
     .ii-close, .ii-icon-button {
       width: 38px; height: 38px; display: inline-grid; place-items: center;
       flex: 0 0 auto; border: 1px solid transparent; border-radius: 10px;
@@ -2089,8 +2175,8 @@
     .ii-close:hover, .ii-icon-button:hover { border-color: var(--ii-line); background: var(--ii-surface); }
     .ii-main { min-height: 0; overflow: hidden; }
     .ii-scroll { height: 100%; overflow: auto; scrollbar-gutter: stable; }
-    .ii-analysis { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
-    .ii-chat-log { overflow: auto; padding: 24px clamp(18px, 3vw, 40px) 30px; scroll-behavior: smooth; }
+    .ii-analysis { position: relative; height: 100%; }
+    .ii-chat-log { height: 100%; overflow: auto; padding: 24px clamp(18px, 3vw, 40px) 30px; scroll-behavior: smooth; }
     .ii-empty {
       height: 100%; min-height: 360px; display: grid; place-items: center; padding: 32px;
       text-align: center;
@@ -2121,6 +2207,10 @@
     .ii-bubble a { color: var(--ii-accent); text-decoration: underline; text-underline-offset: 2px; }
     .ii-message-row.user .ii-bubble {
       border-color: #cfd4ff; border-radius: 14px 14px 4px 14px; background: var(--ii-accent-soft);
+    }
+    .ii-message-selection {
+      display: flex; align-items: center; gap: 6px; margin: -2px 0 7px; color: #4857bd;
+      font-size: 10px; font-weight: 700;
     }
     .ii-image-bubble {
       width: 100%; max-width: 1050px; margin: 0 auto 18px; overflow: hidden;
@@ -2208,6 +2298,37 @@
       display: block; max-width: 100%; max-height: none; width: auto; height: auto;
       border-radius: 7px; object-fit: contain; cursor: zoom-in;
     }
+    .ii-chat-selection-layer { position: absolute; z-index: 9; inset: 0; overflow: hidden; border-radius: 7px; pointer-events: none; }
+    .ii-chat-selection-layer.is-selecting {
+      pointer-events: auto; cursor: crosshair; background: rgba(71,88,214,.05); box-shadow: inset 0 0 0 2px rgba(71,88,214,.48);
+      touch-action: none;
+    }
+    .ii-chat-selection-layer.is-selecting::before {
+      content: attr(data-selection-hint); position: absolute; z-index: 3; top: 8px; left: 50%;
+      padding: 4px 8px; transform: translateX(-50%); border-radius: 999px; color: white;
+      background: rgba(23,32,51,.78); box-shadow: 0 2px 8px rgba(0,0,0,.18); font-size: 10px; white-space: nowrap;
+    }
+    .ii-chat-selection-point {
+      position: absolute; width: 16px; height: 16px; transform: translate(-50%, -50%);
+      border: 2px solid white; border-radius: 50%; background: rgba(184,92,56,.92);
+      box-shadow: 0 0 0 3px rgba(184,92,56,.24), 0 3px 10px rgba(23,32,51,.28);
+    }
+    .ii-chat-selection-point::before, .ii-chat-selection-point::after { content: ''; position: absolute; background: rgba(184,92,56,.88); }
+    .ii-chat-selection-point::before { left: 50%; top: -8px; bottom: -8px; width: 1px; transform: translateX(-50%); }
+    .ii-chat-selection-point::after { top: 50%; left: -8px; right: -8px; height: 1px; transform: translateY(-50%); }
+    .ii-chat-selection-box, .ii-chat-selection-ellipse, .ii-chat-selection-draft {
+      position: absolute; border: 2px solid rgba(184,92,56,.9); background: rgba(184,92,56,.12);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.82), 0 4px 14px rgba(23,32,51,.16);
+    }
+    .ii-chat-selection-ellipse, .ii-chat-selection-draft.is-ellipse { border-radius: 50%; }
+    .ii-chat-selection-draft[hidden] { display: none; }
+    .ii-chat-selection-path, .ii-chat-selection-draft-path { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .ii-chat-selection-path polyline, .ii-chat-selection-path line,
+    .ii-chat-selection-draft-path polyline, .ii-chat-selection-draft-path line {
+      fill: none; stroke: rgba(184,92,56,.94); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round;
+      vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 1px rgba(255,255,255,.9));
+    }
+    .ii-chat-selection-draft-path[hidden] { display: none; }
     .ii-marker {
       position: absolute; width: 8px; height: 8px; min-width: 0; min-height: 0; padding: 0;
       appearance: none; transform: translate(-50%, -50%); opacity: .72;
@@ -2334,12 +2455,28 @@
     .ii-stream-cursor { display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: -.16em; background: var(--ii-accent); animation: ii-blink .8s steps(1) infinite; }
     .ii-stream-stop { display: flex; justify-content: flex-end; margin-top: 9px; }
     .ii-error-actions { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
+    .ii-chat-popover {
+      position: absolute; z-index: 30; top: 12px; right: 12px; width: min(520px, calc(100% - 24px));
+      padding: 12px; border: 1px solid var(--ii-line); border-radius: 13px; background: rgba(255,255,255,.97);
+      box-shadow: 0 16px 44px rgba(23,32,51,.2); backdrop-filter: blur(10px); animation: ii-rise .16s ease-out both;
+    }
+    .ii-chat-popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .ii-chat-popover-head strong { flex: 1; font-size: 13px; }
+    .ii-chat-popover-head .ii-icon-button { width: 30px; height: 30px; }
+    .ii-chat-selection-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 9px; }
+    .ii-chat-selection-tools .ii-button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
+    .ii-chat-selection-tools .ii-button.is-active { border-color: var(--ii-accent); color: var(--ii-accent); background: var(--ii-accent-soft); }
+    .ii-chat-selection-tools .ii-icon-button { width: 30px; height: 30px; }
+    .ii-chat-tool-group { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 5px; }
+    .ii-chat-selection-label {
+      min-width: 0; flex: 1 1 180px; overflow: hidden; color: var(--ii-muted); font-size: 10px;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
     .ii-composer {
-      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
-      padding: 13px clamp(16px, 3vw, 34px); border-top: 1px solid var(--ii-line); background: rgba(255,255,255,.88);
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px;
     }
     .ii-composer textarea {
-      width: 100%; min-height: 44px; max-height: 120px; resize: vertical; padding: 10px 12px;
+      width: 100%; min-height: 72px; max-height: 180px; resize: vertical; padding: 9px 11px;
       border: 1px solid #cbc7bd; border-radius: 11px; outline: none; color: var(--ii-ink); background: white;
     }
     .ii-composer textarea:focus { border-color: var(--ii-accent); box-shadow: 0 0 0 3px rgba(71,88,214,.12); }
@@ -2551,7 +2688,9 @@
       .ii-form-grid { grid-template-columns: 1fr; }
       .ii-site-rule-grid { grid-template-columns: 1fr; }
       .ii-field.full { grid-column: auto; }
-      .ii-composer { padding: 10px; }
+      .ii-chat-toggle span { display: none; }
+      .ii-chat-toggle { width: 34px; padding: 0; justify-content: center; }
+      .ii-chat-popover { top: 8px; right: 8px; width: calc(100% - 16px); }
       .ii-settings, .ii-history { padding: 18px 12px 28px; }
       .ii-settings-layout { display: block; }
       .ii-settings-nav {
@@ -2784,6 +2923,10 @@
     appRoot.addEventListener('change', handleAppChange);
     appRoot.addEventListener('focusin', handleAppFocusIn);
     appRoot.addEventListener('keydown', handleAppKeydown);
+    appRoot.addEventListener('pointerdown', handleChatSelectionPointerDown);
+    appRoot.addEventListener('pointermove', handleChatSelectionPointerMove);
+    appRoot.addEventListener('pointerup', handleChatSelectionPointerUp);
+    appRoot.addEventListener('pointercancel', handleChatSelectionPointerCancel);
     appRoot.addEventListener('load', (event) => {
       if (event.target?.classList?.contains('ii-preview-image')) setupConnectors();
       if (event.target?.classList?.contains('ii-viewer-image')) {
@@ -2845,6 +2988,7 @@
   function openExistingImageAnalysis(image) {
     const conversation = activeAnalysisForImage(image) || completedAnalysisForImage(image);
     if (!conversation) return false;
+    if (state.current?.id !== conversation.id) resetChatInteraction();
     state.current = conversation;
     openApp('analysis');
     return true;
@@ -3167,6 +3311,98 @@
     });
   }
 
+  function normalizeChatSelection(selection) {
+    if (!selection || !Number.isInteger(Number(selection.imageIndex))) return null;
+    const imageIndex = Math.max(0, Number(selection.imageIndex));
+    const coordinate = (value) => {
+      const number = Number(value);
+      return Math.round(clamp(Number.isFinite(number) ? number : 0, 0, 1000));
+    };
+    if (selection.kind === 'point') {
+      return {
+        imageIndex,
+        kind: 'point',
+        x: coordinate(selection.x),
+        y: coordinate(selection.y)
+      };
+    }
+    if (['box', 'ellipse'].includes(selection.kind)) {
+      const x = coordinate(selection.x);
+      const y = coordinate(selection.y);
+      return {
+        imageIndex,
+        kind: selection.kind,
+        x,
+        y,
+        width: Math.round(clamp(Number(selection.width) || 1, 1, Math.max(1, 1000 - x))),
+        height: Math.round(clamp(Number(selection.height) || 1, 1, Math.max(1, 1000 - y)))
+      };
+    }
+    if (selection.kind === 'arrow') {
+      return {
+        imageIndex,
+        kind: 'arrow',
+        x1: coordinate(selection.x1),
+        y1: coordinate(selection.y1),
+        x2: coordinate(selection.x2),
+        y2: coordinate(selection.y2)
+      };
+    }
+    if (selection.kind === 'brush' && Array.isArray(selection.points)) {
+      const points = selection.points.slice(0, 240).map((point) => [coordinate(point?.[0]), coordinate(point?.[1])]);
+      return points.length ? { imageIndex, kind: 'brush', points } : null;
+    }
+    return null;
+  }
+
+  function chatSelectionLabel(selection) {
+    const value = normalizeChatSelection(selection);
+    if (!value) return '';
+    if (value.kind === 'point') return `图片 ${value.imageIndex + 1} · 锚点 (${value.x}, ${value.y})`;
+    if (value.kind === 'box') return `图片 ${value.imageIndex + 1} · 方框 (${value.x}, ${value.y}, ${value.width} × ${value.height})`;
+    if (value.kind === 'ellipse') return `图片 ${value.imageIndex + 1} · 圆形 (${value.x}, ${value.y}, ${value.width} × ${value.height})`;
+    if (value.kind === 'arrow') return `图片 ${value.imageIndex + 1} · 箭头 (${value.x1}, ${value.y1}) → (${value.x2}, ${value.y2})`;
+    return `图片 ${value.imageIndex + 1} · 自由画笔 ${value.points.length} 点`;
+  }
+
+  function chatSelectionToolHint(tool = state.chatSelectionTool) {
+    return {
+      point: '单击图片放置锚点 · Esc 取消',
+      box: '拖拽绘制方框 · Esc 取消',
+      ellipse: '拖拽绘制椭圆 · Shift 锁定正圆',
+      brush: '按住拖动自由画笔 · Esc 取消',
+      arrow: '拖拽绘制箭头 · Esc 取消'
+    }[tool] || '在图片上选取位置 · Esc 取消';
+  }
+
+  function renderChatSelectionToolButtons() {
+    const tools = [
+      ['point', 'point', '锚点'],
+      ['box', 'rectangle', '方框'],
+      ['ellipse', 'ellipse', '圆形'],
+      ['brush', 'brush', '画笔'],
+      ['arrow', 'arrow', '箭头']
+    ];
+    return `<div class="ii-chat-tool-group" role="group" aria-label="图片位置选取工具">${tools.map(([tool, iconName, label]) => `<button class="ii-button${state.chatSelectionMode && state.chatSelectionTool === tool ? ' is-active' : ''}" type="button" data-action="select-chat-tool" data-tool="${tool}" aria-pressed="${state.chatSelectionMode && state.chatSelectionTool === tool}">${icon(iconName, 13)}${label}</button>`).join('')}</div>`;
+  }
+
+  function renderChatSelectionLayer(imageIndex) {
+    const selection = normalizeChatSelection(state.chatSelection);
+    const selected = selection?.imageIndex === imageIndex ? selection : null;
+    let indicator = '';
+    if (selected?.kind === 'point') {
+      indicator = `<span class="ii-chat-selection-point" style="left:${selected.x / 10}%;top:${selected.y / 10}%"></span>`;
+    } else if (['box', 'ellipse'].includes(selected?.kind)) {
+      indicator = `<span class="ii-chat-selection-${selected.kind}" style="left:${selected.x / 10}%;top:${selected.y / 10}%;width:${selected.width / 10}%;height:${selected.height / 10}%"></span>`;
+    } else if (selected?.kind === 'brush') {
+      indicator = `<svg class="ii-chat-selection-path" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"><polyline points="${selected.points.map((point) => point.join(',')).join(' ')}"></polyline></svg>`;
+    } else if (selected?.kind === 'arrow') {
+      const markerId = `ii-chat-arrow-selected-${imageIndex}`;
+      indicator = `<svg class="ii-chat-selection-path" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(184,92,56,.94)"></path></marker></defs><line x1="${selected.x1}" y1="${selected.y1}" x2="${selected.x2}" y2="${selected.y2}" marker-end="url(#${markerId})"></line></svg>`;
+    }
+    return `<div class="ii-chat-selection-layer${state.chatSelectionMode ? ' is-selecting' : ''}" data-chat-selection-layer data-image-index="${imageIndex}" data-selection-hint="${escapeHTML(chatSelectionToolHint())}">${indicator}<span class="ii-chat-selection-draft" hidden></span><svg class="ii-chat-selection-draft-path" viewBox="0 0 1000 1000" preserveAspectRatio="none" hidden aria-hidden="true"></svg></div>`;
+  }
+
   function renderAnnotatedStage(image, analysis, imageIndex, options = {}) {
     const streaming = Boolean(options.streaming);
     const regions = orderRegionsByAnchor(analysis?.regions || []);
@@ -3205,6 +3441,7 @@
             <div class="ii-image-frame">
               <img class="ii-preview-image" src="${escapeHTML(previewUrl)}" ${fallbackUrl && fallbackUrl !== previewUrl ? `data-fallback-source="${escapeHTML(fallbackUrl)}"` : ''} alt="当前解析图片预览" data-action="open-image-preview" data-image-index="${imageIndex}" title="点击全屏查看原图">
               ${markers}
+              ${renderChatSelectionLayer(imageIndex)}
             </div>
           </div>
           <div class="ii-region-column right">
@@ -3394,6 +3631,7 @@
         fallbackSource: image?.thumbnail || ''
       };
     });
+    resetChatInteraction();
     state.current = {
       ...record,
       status: 'complete',
@@ -3799,7 +4037,10 @@
   function renderConversationMessages(conversation) {
     return (conversation.messages || []).map((message) => `
       <div class="ii-message-row ${message.role === 'user' ? 'user' : 'assistant'}">
-        <div class="ii-bubble">${renderMarkdown(message.content)}</div>
+        <div class="ii-bubble">
+          ${message.role === 'user' && message.selection ? `<span class="ii-message-selection">${icon('scan', 13)}${escapeHTML(chatSelectionLabel(message.selection))}</span>` : ''}
+          ${renderMarkdown(message.content)}
+        </div>
       </div>`).join('');
   }
 
@@ -3825,11 +4066,22 @@
           ${conversation.error && ready ? `<div class="ii-inline-error">${icon('alert', 16)}<span>${escapeHTML(conversation.error)}</span></div>` : ''}
           ${conversation.status === 'chat-loading' ? `<div class="ii-message-row assistant"><div class="ii-bubble"><div class="ii-stream-text"></div><span class="ii-stream-cursor" aria-hidden="true"></span><div class="ii-stream-stop"><button class="ii-button" type="button" data-action="cancel">${icon('stop', 14)}停止</button></div></div></div>` : ''}
         </div>
-        ${ready ? `
-          <form class="ii-composer" data-form="chat">
-            <textarea name="message" rows="1" maxlength="4000" placeholder="围绕这张图片继续提问，Enter 发送，Shift+Enter 换行" aria-label="输入图片相关问题" ${conversation.status === 'chat-loading' ? 'disabled' : ''}></textarea>
-            <button class="ii-button primary square" type="submit" aria-label="发送" ${conversation.status === 'chat-loading' ? 'disabled' : ''}>${icon('send', 18)}</button>
-          </form>` : ''}
+        ${ready && state.chatComposerOpen ? `
+          <aside class="ii-chat-popover" aria-label="围绕图片继续提问">
+            <div class="ii-chat-popover-head">
+              ${icon('message', 16)}
+              <strong>围绕图片继续提问</strong>
+              <button class="ii-icon-button" type="button" data-action="toggle-chat-composer" aria-label="收起对话入口">${icon('close', 16)}</button>
+            </div>
+            <div class="ii-chat-selection-tools">
+              ${renderChatSelectionToolButtons()}
+              ${state.chatSelection ? `<span class="ii-chat-selection-label">${escapeHTML(chatSelectionLabel(state.chatSelection))}</span><button class="ii-icon-button" type="button" data-action="clear-chat-selection" aria-label="清除图片位置" title="清除图片位置">${icon('close', 14)}</button>` : `<span class="ii-chat-selection-label">${escapeHTML(chatSelectionToolHint())}</span>`}
+            </div>
+            <form class="ii-composer" data-form="chat">
+              <textarea name="message" rows="2" maxlength="4000" placeholder="输入问题；已选位置可直接发送" aria-label="输入图片相关问题"></textarea>
+              <button class="ii-button primary square" type="submit" aria-label="发送">${icon('send', 18)}</button>
+            </form>
+          </aside>` : ''}
       </div>`;
   }
 
@@ -4098,6 +4350,8 @@
       document.documentElement.style.overflow = 'hidden';
     }
     const isSettings = state.tab === 'settings';
+    const canChat = !isSettings && state.tab === 'analysis' && Boolean(state.current?.analysis);
+    const chatLoading = state.current?.status === 'chat-loading';
     const content = isSettings
       ? renderSettings()
       : state.tab === 'history'
@@ -4110,6 +4364,7 @@
             <div class="ii-brand"><span class="ii-brand-mark">${icon('scan', 17)}</span><span><strong>${APP_NAME}</strong><small>Image Insight</small></span></div>
             ${isSettings ? '' : renderTabs()}
             <span class="ii-header-spacer"></span>
+            ${canChat ? `<button class="ii-chat-toggle" type="button" data-action="toggle-chat-composer" aria-expanded="${state.chatComposerOpen}" aria-label="${chatLoading ? '正在生成回答' : '围绕图片继续提问'}" title="${chatLoading ? '正在生成回答' : '围绕图片继续提问'}" ${chatLoading ? 'disabled' : ''}>${icon('message', 16)}<span>${chatLoading ? '回答中' : '提问'}</span></button>` : ''}
             <button class="ii-close" type="button" data-action="close" aria-label="关闭" title="关闭浮窗；进行中的任务会在后台继续">${icon('close', 20)}</button>
           </header>
           <main class="ii-main">${content}</main>
@@ -4231,6 +4486,7 @@
 
   function openApp(tab = 'settings') {
     if (state.batchMode) exitBatchMode();
+    if (!state.open || state.tab !== tab) resetChatInteraction(false);
     state.backgrounded = false;
     state.open = true;
     state.tab = tab;
@@ -4241,6 +4497,7 @@
 
   function closeApp() {
     closeImagePreview({ restoreSelection: false });
+    resetChatInteraction(false);
     state.backgrounded = ['loading', 'chat-loading'].includes(state.current?.status);
     state.open = false;
     renderApp();
@@ -4386,6 +4643,210 @@
     showToast('已恢复解析默认值，保存设置后生效。');
   }
 
+  function resetChatInteraction(clearSelection = true) {
+    state.chatComposerOpen = false;
+    state.chatSelectionMode = false;
+    if (clearSelection) state.chatSelection = null;
+    chatSelectionDrag = null;
+  }
+
+  function rerenderAnalysisPreservingScroll({ focusComposer = false } = {}) {
+    const scrollTop = appRoot?.querySelector('.ii-chat-log')?.scrollTop || 0;
+    renderApp();
+    requestAnimationFrame(() => {
+      const log = appRoot?.querySelector('.ii-chat-log');
+      if (log) log.scrollTop = scrollTop;
+      if (focusComposer) appRoot?.querySelector('.ii-chat-popover textarea')?.focus({ preventScroll: true });
+    });
+  }
+
+  function toggleChatComposer() {
+    if (!state.current?.analysis || state.current.status === 'chat-loading') return;
+    state.chatComposerOpen = !state.chatComposerOpen;
+    state.chatSelectionMode = false;
+    chatSelectionDrag = null;
+    rerenderAnalysisPreservingScroll({ focusComposer: state.chatComposerOpen });
+  }
+
+  function selectChatSelectionTool(tool) {
+    if (!['point', 'box', 'ellipse', 'brush', 'arrow'].includes(tool)) return;
+    const isSameActiveTool = state.chatSelectionMode && state.chatSelectionTool === tool;
+    state.chatSelectionTool = tool;
+    state.chatSelectionMode = !isSameActiveTool;
+    chatSelectionDrag = null;
+    rerenderAnalysisPreservingScroll();
+  }
+
+  function clearChatSelection() {
+    state.chatSelection = null;
+    state.chatSelectionMode = false;
+    chatSelectionDrag = null;
+    rerenderAnalysisPreservingScroll({ focusComposer: true });
+  }
+
+  function chatSelectionPointer(layer, event) {
+    const rect = layer.getBoundingClientRect();
+    const px = clamp(event.clientX - rect.left, 0, Math.max(1, rect.width));
+    const py = clamp(event.clientY - rect.top, 0, Math.max(1, rect.height));
+    return {
+      px,
+      py,
+      x: Math.round(px / Math.max(1, rect.width) * 1000),
+      y: Math.round(py / Math.max(1, rect.height) * 1000),
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function constrainChatSelectionCircle(drag, point, shiftKey) {
+    if (drag.tool !== 'ellipse' || !shiftKey) return point;
+    const dx = point.px - drag.start.px;
+    const dy = point.py - drag.start.py;
+    const directionX = dx < 0 ? -1 : 1;
+    const directionY = dy < 0 ? -1 : 1;
+    const availableX = directionX < 0 ? drag.start.px : point.width - drag.start.px;
+    const availableY = directionY < 0 ? drag.start.py : point.height - drag.start.py;
+    const size = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), availableX, availableY);
+    const rect = drag.layer.getBoundingClientRect();
+    const px = drag.start.px + directionX * size;
+    const py = drag.start.py + directionY * size;
+    return {
+      px,
+      py,
+      x: Math.round(px / Math.max(1, rect.width) * 1000),
+      y: Math.round(py / Math.max(1, rect.height) * 1000),
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function updateChatSelectionDraft(drag) {
+    const draft = drag.layer.querySelector('.ii-chat-selection-draft');
+    const path = drag.layer.querySelector('.ii-chat-selection-draft-path');
+    if (!draft || !path) return;
+    draft.hidden = true;
+    draft.classList.remove('is-ellipse');
+    path.hidden = true;
+    path.replaceChildren();
+    if (['box', 'ellipse'].includes(drag.tool)) {
+      draft.hidden = false;
+      draft.classList.toggle('is-ellipse', drag.tool === 'ellipse');
+      draft.style.left = `${Math.min(drag.start.px, drag.current.px)}px`;
+      draft.style.top = `${Math.min(drag.start.py, drag.current.py)}px`;
+      draft.style.width = `${Math.abs(drag.current.px - drag.start.px)}px`;
+      draft.style.height = `${Math.abs(drag.current.py - drag.start.py)}px`;
+      return;
+    }
+    if (drag.tool === 'brush') {
+      path.hidden = false;
+      path.innerHTML = `<polyline points="${drag.points.map((point) => `${point.x},${point.y}`).join(' ')}"></polyline>`;
+      return;
+    }
+    if (drag.tool === 'arrow') {
+      path.hidden = false;
+      path.innerHTML = '<defs><marker id="ii-chat-arrow-draft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(184,92,56,.94)"></path></marker></defs>' +
+        `<line x1="${drag.start.x}" y1="${drag.start.y}" x2="${drag.current.x}" y2="${drag.current.y}" marker-end="url(#ii-chat-arrow-draft)"></line>`;
+    }
+  }
+
+  function clearChatSelectionDraft(drag = chatSelectionDrag) {
+    const draft = drag?.layer?.querySelector('.ii-chat-selection-draft');
+    const path = drag?.layer?.querySelector('.ii-chat-selection-draft-path');
+    if (draft) {
+      draft.hidden = true;
+      draft.removeAttribute('style');
+      draft.classList.remove('is-ellipse');
+    }
+    if (path) {
+      path.hidden = true;
+      path.replaceChildren();
+    }
+  }
+
+  function handleChatSelectionPointerDown(event) {
+    const layer = event.target.closest?.('[data-chat-selection-layer]');
+    if (!layer || !state.chatSelectionMode || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const start = chatSelectionPointer(layer, event);
+    chatSelectionDrag = {
+      layer,
+      pointerId: event.pointerId,
+      tool: state.chatSelectionTool,
+      imageIndex: Number(layer.dataset.imageIndex) || 0,
+      start,
+      current: start,
+      points: [start]
+    };
+    try { layer.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional. */ }
+    updateChatSelectionDraft(chatSelectionDrag);
+  }
+
+  function handleChatSelectionPointerMove(event) {
+    const drag = chatSelectionDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = constrainChatSelectionCircle(drag, chatSelectionPointer(drag.layer, event), event.shiftKey);
+    drag.current = point;
+    if (drag.tool === 'brush') {
+      const previous = drag.points[drag.points.length - 1];
+      if (drag.points.length < 240 && Math.hypot(point.px - previous.px, point.py - previous.py) >= 3) drag.points.push(point);
+    }
+    updateChatSelectionDraft(drag);
+  }
+
+  function handleChatSelectionPointerUp(event) {
+    const drag = chatSelectionDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = constrainChatSelectionCircle(drag, chatSelectionPointer(drag.layer, event), event.shiftKey);
+    drag.current = point;
+    if (drag.tool === 'brush') {
+      const previous = drag.points[drag.points.length - 1];
+      if (drag.points.length < 240 && Math.hypot(point.px - previous.px, point.py - previous.py) >= 1) drag.points.push(point);
+    }
+    const distance = Math.hypot(point.px - drag.start.px, point.py - drag.start.py);
+    let selection;
+    if (drag.tool === 'point' || distance < 4) {
+      selection = { imageIndex: drag.imageIndex, kind: 'point', x: point.x, y: point.y };
+    } else if (['box', 'ellipse'].includes(drag.tool)) {
+      selection = {
+        imageIndex: drag.imageIndex,
+        kind: drag.tool,
+        x: Math.min(drag.start.x, point.x),
+        y: Math.min(drag.start.y, point.y),
+        width: Math.abs(point.x - drag.start.x),
+        height: Math.abs(point.y - drag.start.y)
+      };
+    } else if (drag.tool === 'arrow') {
+      selection = {
+        imageIndex: drag.imageIndex,
+        kind: 'arrow',
+        x1: drag.start.x,
+        y1: drag.start.y,
+        x2: point.x,
+        y2: point.y
+      };
+    } else {
+      selection = { imageIndex: drag.imageIndex, kind: 'brush', points: drag.points.map(({ x, y }) => [x, y]) };
+    }
+    clearChatSelectionDraft(drag);
+    try { drag.layer.releasePointerCapture(event.pointerId); } catch { /* Pointer capture is optional. */ }
+    chatSelectionDrag = null;
+    state.chatSelection = normalizeChatSelection(selection);
+    state.chatSelectionMode = false;
+    rerenderAnalysisPreservingScroll({ focusComposer: true });
+  }
+
+  function handleChatSelectionPointerCancel(event) {
+    const drag = chatSelectionDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    clearChatSelectionDraft(drag);
+    chatSelectionDrag = null;
+  }
+
   async function handleAppClick(event) {
     if (!event.target.closest?.('.ii-model-picker')) closeModelMenus();
     if (!event.target.closest?.('.ii-font-picker')) closeFontMenus();
@@ -4407,6 +4868,7 @@
     if (action === 'tab') {
       const tab = button.dataset.tab;
       if (tab === 'analysis' && !state.current) return;
+      if (tab !== state.tab) resetChatInteraction(false);
       state.tab = tab;
       renderApp();
       if (tab === 'history') loadHistory();
@@ -4419,6 +4881,9 @@
     if (action === 'select-font') selectFont(button);
     if (action === 'settings-section') selectSettingsSection(button);
     if (action === 'restore-analysis-defaults') restoreAnalysisDefaults(button);
+    if (action === 'toggle-chat-composer') toggleChatComposer();
+    if (action === 'select-chat-tool') selectChatSelectionTool(button.dataset.tool);
+    if (action === 'clear-chat-selection') clearChatSelection();
     if (action === 'batch-mode') enterBatchMode();
     if (action === 'add-current-site') addSiteRuleRow(button.closest('form'), true);
     if (action === 'add-empty-site') addSiteRuleRow(button.closest('form'), false);
@@ -4436,8 +4901,13 @@
     if (form.dataset.form === 'chat') {
       const textarea = form.elements.message;
       const message = textarea.value;
+      const selection = normalizeChatSelection(state.chatSelection);
+      if (!cleanText(message) && !selection) return;
       textarea.value = '';
-      sendChat(message);
+      state.chatComposerOpen = false;
+      state.chatSelectionMode = false;
+      chatSelectionDrag = null;
+      sendChat(message, selection);
     }
   }
 
@@ -4496,6 +4966,20 @@
         closeModelMenus();
         closeFontMenus();
         trigger?.focus();
+        return;
+      }
+      if (state.chatSelectionMode) {
+        event.preventDefault();
+        state.chatSelectionMode = false;
+        clearChatSelectionDraft();
+        chatSelectionDrag = null;
+        rerenderAnalysisPreservingScroll({ focusComposer: true });
+        return;
+      }
+      if (state.chatComposerOpen) {
+        event.preventDefault();
+        state.chatComposerOpen = false;
+        rerenderAnalysisPreservingScroll();
         return;
       }
       closeApp();
@@ -4798,7 +5282,10 @@
     if (!confirm('永久删除这一条本地图片会话？此操作无法恢复。')) return;
     try {
       await deleteConversation(id);
-      if (state.current?.id === id) state.current = null;
+      if (state.current?.id === id) {
+        resetChatInteraction();
+        state.current = null;
+      }
       await loadHistory();
       showToast('本地会话已删除。');
     } catch (error) {
@@ -4812,6 +5299,7 @@
     try {
       await clearConversations();
       state.history = [];
+      resetChatInteraction();
       state.current = null;
       renderApp();
       showToast(`已永久删除 ${count} 条本地会话。`);
