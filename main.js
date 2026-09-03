@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.6
+// @version      1.0.7
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.6）
+ * 产品契约（v1.0.7）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.6';
+  const APP_VERSION = '1.0.7';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -2325,7 +2325,7 @@
     .ii-chat-selection-path, .ii-chat-selection-draft-path { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
     .ii-chat-selection-path polyline, .ii-chat-selection-path line,
     .ii-chat-selection-draft-path polyline, .ii-chat-selection-draft-path line {
-      fill: none; stroke: rgba(184,92,56,.94); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round;
+      fill: none; stroke: rgba(184,92,56,.94); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
       vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 1px rgba(255,255,255,.9));
     }
     .ii-chat-selection-draft-path[hidden] { display: none; }
@@ -4726,7 +4726,7 @@
     if (!draft || !path) return;
     draft.hidden = true;
     draft.classList.remove('is-ellipse');
-    path.hidden = true;
+    path.setAttribute('hidden', '');
     path.replaceChildren();
     if (['box', 'ellipse'].includes(drag.tool)) {
       draft.hidden = false;
@@ -4738,12 +4738,12 @@
       return;
     }
     if (drag.tool === 'brush') {
-      path.hidden = false;
+      path.removeAttribute('hidden');
       path.innerHTML = `<polyline points="${drag.points.map((point) => `${point.x},${point.y}`).join(' ')}"></polyline>`;
       return;
     }
     if (drag.tool === 'arrow') {
-      path.hidden = false;
+      path.removeAttribute('hidden');
       path.innerHTML = '<defs><marker id="ii-chat-arrow-draft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(184,92,56,.94)"></path></marker></defs>' +
         `<line x1="${drag.start.x}" y1="${drag.start.y}" x2="${drag.current.x}" y2="${drag.current.y}" marker-end="url(#ii-chat-arrow-draft)"></line>`;
     }
@@ -4758,7 +4758,7 @@
       draft.classList.remove('is-ellipse');
     }
     if (path) {
-      path.hidden = true;
+      path.setAttribute('hidden', '');
       path.replaceChildren();
     }
   }
