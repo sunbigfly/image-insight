@@ -4,7 +4,7 @@
   <strong>让网页图片从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
-  <img alt="版本" src="https://img.shields.io/badge/version-1.0.1-536af5">
+  <img alt="版本" src="https://img.shields.io/badge/version-1.0.2-536af5">
   <a href="https://github.com/sunbigfly/image-insight/blob/main/LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
@@ -30,7 +30,7 @@
 2. 从油猴菜单打开设置，填写兼容 OpenAI Responses API 的地址与密钥。
 3. 将鼠标移到网页图片上，点击识图按钮。
 
-内置嗅探仅覆盖 Reddit 与 X/Twitter。其他网站需先在 Tampermonkey 的“用户匹配”中授权网址，再通过自定义 URL 与图片选择器添加解析入口。
+内置嗅探仅覆盖 Reddit 与 X/Twitter。其他网站可在设置中新增自定义 `@match` 与图片选择器；同一 Match 需添加到 Tampermonkey 的“用户匹配”后生效。
 
 ### 4. 隐私
 
