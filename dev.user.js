@@ -1,0 +1,34 @@
+// ==UserScript==
+// @name         [DEV] 图像深读 · Local Loader
+// @namespace    local.image-insight.dev
+// @version      1.0.2.1
+// @description  从本地 HTTP 服务加载图像深读主脚本，用于开发调试。
+// @match        https://reddit.com/*
+// @match        https://*.reddit.com/*
+// @match        https://x.com/*
+// @match        https://*.x.com/*
+// @match        https://twitter.com/*
+// @match        https://*.twitter.com/*
+// @run-at       document-idle
+// @noframes
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// @connect      *
+// @require      http://localhost:8765/main.js?v=1.0.2.1
+// ==/UserScript==
+
+/*
+ * 启动本地服务：
+ *   cd /home/sunbigfly/mywork/image-insight
+ *   python3 -m http.server 8765 --bind 127.0.0.1
+ *
+ * Tampermonkey 中只启用本 Loader，关闭正式版脚本，避免重复注入。
+ * main.js 更新后递增 @require 的 v 参数并重新保存 Loader，以刷新依赖缓存。
+ * 调试自定义网站时，还需在 Tampermonkey 的“用户匹配”中添加对应 Match。
+ */
+
+console.info('[图像深读 DEV] main.js 已通过本地 @require 加载。');

@@ -36,6 +36,15 @@
 
 只有主动解析时才会发送图片及可查看的页面上下文。API Key 仅保存在油猴脚本存储中，不写入网页、历史记录或导出内容。
 
-### 5. License
+### 5. 本地调试
+
+```bash
+cd /home/sunbigfly/mywork/image-insight
+python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+在 Tampermonkey 中安装并启用 [`dev.user.js`](dev.user.js)，同时关闭正式版脚本。修改 `main.js` 后递增 Loader 中 `@require` 的 `v` 参数并重新保存，即可刷新本地依赖缓存。
+
+### 6. License
 
 本项目采用 [MIT License](https://github.com/sunbigfly/image-insight/blob/main/LICENSE)。
