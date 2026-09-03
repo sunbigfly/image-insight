@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.3
+// @version      1.0.4
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.3）
+ * 产品契约（v1.0.4）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -45,7 +45,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.3';
+  const APP_VERSION = '1.0.4';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -2760,6 +2760,7 @@
     appRoot.addEventListener('click', handleAppClick);
     appRoot.addEventListener('submit', handleAppSubmit);
     appRoot.addEventListener('input', handleAppInput);
+    appRoot.addEventListener('focusin', handleAppFocusIn);
     appRoot.addEventListener('keydown', handleAppKeydown);
     appRoot.addEventListener('load', (event) => {
       if (event.target?.classList?.contains('ii-preview-image')) setupConnectors();
@@ -4123,6 +4124,10 @@
       endpoint.setAttribute('class', 'ii-link-line');
       endpoint.setAttribute('data-image-index', card.dataset.imageIndex || '0');
       endpoint.setAttribute('data-index', card.dataset.index || '0');
+      if (card.classList.contains('is-active') || marker.classList.contains('is-active')) {
+        path.classList.add('is-active');
+        endpoint.classList.add('is-active');
+      }
       svg.append(hitPath, path, endpoint);
     }
     void imageRect;
@@ -4299,6 +4304,7 @@
     if (!event.target.closest?.('.ii-model-picker')) closeModelMenus();
     if (!event.target.closest?.('.ii-font-picker')) closeFontMenus();
     if (event.target.closest?.('[data-image-viewer]') && !event.target.closest?.('.ii-viewer-marker')) clearViewerMarkerFocus();
+    if (!event.target.closest?.('[data-action="focus-region"]')) clearRegionFocus();
     const button = event.target.closest?.('[data-action]');
     if (!button) return;
     const action = button.dataset.action;
@@ -4361,6 +4367,15 @@
     const next = appRoot.querySelector('[data-input="history-search"]');
     next?.focus();
     next?.setSelectionRange(cursor, cursor);
+  }
+
+  function handleAppFocusIn(event) {
+    const regionTarget = event.target.closest?.('[data-action="focus-region"]');
+    if (!regionTarget) {
+      clearRegionFocus(false);
+      return;
+    }
+    activateRegion(Number(regionTarget.dataset.imageIndex), Number(regionTarget.dataset.index));
   }
 
   function handlePreviewWheel(event) {
@@ -4638,7 +4653,7 @@
     }
   }
 
-  function focusRegion(imageIndex, index) {
+  function activateRegion(imageIndex, index) {
     if (!Number.isFinite(imageIndex) || !Number.isFinite(index)) return;
     const cards = [...appRoot.querySelectorAll('.ii-region-card')];
     const markers = [...appRoot.querySelectorAll('.ii-marker')];
@@ -4647,14 +4662,21 @@
     cards.forEach((card) => card.classList.toggle('is-active', matches(card)));
     markers.forEach((marker) => marker.classList.toggle('is-active', matches(marker)));
     lines.forEach((line) => line.classList.toggle('is-active', matches(line)));
+  }
+
+  function clearRegionFocus(blur = true) {
+    appRoot.querySelectorAll('.ii-region-card.is-active, .ii-marker.is-active, .ii-link-line.is-active').forEach((item) => item.classList.remove('is-active'));
+    if (blur && appRoot.activeElement?.matches?.('.ii-region-card, .ii-marker')) appRoot.activeElement.blur();
+  }
+
+  function focusRegion(imageIndex, index) {
+    if (!Number.isFinite(imageIndex) || !Number.isFinite(index)) return;
+    activateRegion(imageIndex, index);
+    const cards = [...appRoot.querySelectorAll('.ii-region-card')];
+    const matches = (item) => Number(item.dataset.imageIndex) === imageIndex && Number(item.dataset.index) === index;
     const card = cards.find((item) => matches(item) && item.offsetParent !== null) || cards.find(matches);
     card?.focus({ preventScroll: true });
     card?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-    setTimeout(() => {
-      cards.filter(matches).forEach((item) => item.classList.remove('is-active'));
-      markers.filter(matches).forEach((item) => item.classList.remove('is-active'));
-      lines.filter(matches).forEach((item) => item.classList.remove('is-active'));
-    }, 1800);
   }
 
   function focusViewerMarker(marker) {
