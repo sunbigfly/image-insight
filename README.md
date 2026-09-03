@@ -1,29 +1,38 @@
-# 图像深读
+# 图像深读 · Image Insight
 
-在网页中直接解析图片，以可视化批注呈现原文、翻译和上下文含义，并支持围绕图片继续提问。
+<div align="center">
+  <strong>让网页图片从“看见”变成“看懂”</strong>
+  <br><br>
+  <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
+  <img alt="版本" src="https://img.shields.io/badge/version-1.0.0-536af5">
+  <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
+</div>
 
-## 功能
+## 1. 介绍
 
-- 图片解析：识别图片类型、文字、对象、关系与语气。
-- 可视化批注：用锚点、连线和信息卡对应图片区域。
-- 原文翻译：保留可见原文，并提供自然的中文翻译。
-- 上下文理解：结合当前帖子、评论或页面内容解释图片。
-- 连续对话：基于图片、解析结果和页面上下文继续提问。
-- 本地历史：保存解析记录和压缩预览，不保存原图。
-- 批量解析：一次联合解析最多 8 张图片。
+图像深读是一款网页图片解析用户脚本。它会在图片旁生成可视化批注，呈现原文、翻译与上下文含义，并支持围绕图片继续提问。
 
-## 使用
+## 2. 核心能力
 
-1. 在 Tampermonkey 中安装 `main.js`。
-2. 从油猴菜单打开设置，填写兼容 OpenAI Responses API 的地址和密钥。
-3. 将鼠标移到支持站点的图片上，点击识图按钮开始解析。
+- **区域解析**：识别图片中的文字、对象、关系与语气。
+- **可视化批注**：通过锚点、连线与信息卡定位解析内容。
+- **上下文理解**：结合帖子、评论或页面内容解释图片。
+- **连续对话**：基于图片与解析结果继续提问。
+- **本地历史**：保存解析记录与压缩预览，不保存原图。
+- **批量处理**：一次联合解析最多 8 张图片。
 
-默认支持 Reddit 与 X/Twitter，其他网站可在设置中添加 URL 和 CSS 选择器规则。
+## 3. 快速开始
 
-## 隐私
+1. [从 Greasy Fork 安装脚本](https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight)。
+2. 从油猴菜单打开设置，填写兼容 OpenAI Responses API 的地址与密钥。
+3. 将鼠标移到网页图片上，点击识图按钮。
 
-只有主动识图时才会发送图片和可查看的页面上下文。API Key 保存在油猴脚本存储中，不写入网页、历史记录或导出内容。
+默认支持 Reddit 与 X/Twitter；其他网站可通过 URL 与 CSS 选择器规则接入。
 
-## License
+## 4. 隐私
 
-[MIT](LICENSE)
+只有主动解析时才会发送图片及可查看的页面上下文。API Key 仅保存在油猴脚本存储中，不写入网页、历史记录或导出内容。
+
+## 5. License
+
+本项目采用 [MIT License](LICENSE)。
