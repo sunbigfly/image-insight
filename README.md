@@ -4,7 +4,7 @@
   <strong>让网页图片从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
-  <img alt="版本" src="https://img.shields.io/badge/version-1.0.8-536af5">
+  <img alt="版本" src="https://img.shields.io/badge/version-1.0.9-536af5">
   <a href="https://github.com/sunbigfly/image-insight/blob/main/LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
@@ -22,7 +22,7 @@
 - **连续对话**：用锚点、方框、圆形、自由画笔或箭头选取图片位置，围绕局部继续提问。
 - **站点接入**：内置 Reddit 与 X/Twitter 图片嗅探，可为其他站点自定义解析入口。
 - **本地历史**：保存解析记录与压缩预览，不保存原图。
-- **批量处理**：一次联合解析最多 8 张图片。
+- **批量处理**：最多选择 9 张图片，紧密拼接为 3×3 分区联合图后统一解析。
 
 ### 3. 快速开始
 
