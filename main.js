@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.4
+// @version      1.0.5
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.4）
+ * 产品契约（v1.0.5）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -34,8 +34,8 @@
  * 5. AI 先识别图片类型，再结合站点上下文做内容与内涵解析；区域坐标采用 0–1000 归一化坐标。
  * 6. 桌面端在图片左右以无碰撞信息卡和引线对应区域；移动端改为编号锚点与下方信息卡。
  * 7. 原文、中文翻译与含义分层显示；原文和中文的字体、字号、颜色可分别设置。
- * 8. 解析器固定居中显示；窄屏使用底部抽屉。图片是会话中的首个可预览气泡。
- * 9. 对话沿用图片、解析结果和页面上下文；会话按条存入油猴脚本级本地库，可跨站统一管理。
+ * 8. 解析器固定居中显示；窄屏使用底部抽屉。全屏预览支持方向键切换，退出后回到对应图片解析。
+ * 9. 对话沿用图片、解析结果和页面上下文；会话按条存入油猴脚本级本地库，可搜索、筛选并以宫格跨站管理。
  * 10. 不在数据库保存原图或 API Key；API Key 仅存于油猴脚本存储，但该存储并非加密保险箱。
  * 11. 相同图片按规范化 URL 指纹或原始内容 SHA-256 命中本地解析缓存，不重复调用视觉解析。
  * 12. 页面常显历史入口；设置从油猴菜单独立打开，不占用图片解析与历史之间的页签。
@@ -45,7 +45,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.4';
+  const APP_VERSION = '1.0.5';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -226,6 +226,8 @@
     history: [],
     historyLoading: false,
     historyQuery: '',
+    historyHostFilter: '',
+    historyTypeFilter: '',
     settingsSection: 'api',
     batchMode: false,
     backgrounded: false,
@@ -2123,7 +2125,9 @@
     .ii-image-bubble {
       width: 100%; max-width: 1050px; margin: 0 auto 18px; overflow: hidden;
       border: 1px solid var(--ii-line); border-radius: 16px 16px 16px 5px; background: var(--ii-surface);
+      scroll-margin-block: 20px;
     }
+    .ii-image-bubble:focus { outline: 2px solid rgba(71,88,214,.5); outline-offset: 3px; }
     .ii-image-head {
       display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 12px;
       border-bottom: 1px solid var(--ii-line); background: #fbfaf7;
@@ -2232,8 +2236,9 @@
     .ii-marker:hover, .ii-marker.is-active { opacity: 1; background: rgba(184,92,56,.8); box-shadow: 0 0 0 3px rgba(184,92,56,.18); }
     .ii-links { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
     .ii-link-hit { pointer-events: stroke; cursor: pointer; }
-    .ii-link-line { transition: stroke .16s ease, stroke-opacity .16s ease, filter .16s ease; }
-    .ii-link-line.is-active { stroke: #b85c38; stroke-opacity: .95; filter: drop-shadow(0 0 3px rgba(184,92,56,.6)); }
+    .ii-link-line { transition: stroke .16s ease, stroke-opacity .16s ease, fill .16s ease, fill-opacity .16s ease; }
+    .ii-link-line.is-active { stroke: #626b78; stroke-opacity: .78; }
+    circle.ii-link-line.is-active { fill: #626b78; fill-opacity: .78; }
     .ii-region-card {
       position: relative; padding: 10px 11px; min-width: 0; border: 1px solid #d7d2c8;
       border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(31, 36, 52, .06);
@@ -2469,25 +2474,28 @@
     .ii-status.error { color: var(--ii-danger); }
     .ii-notice { margin-bottom: 16px; padding: 11px 13px; border: 1px solid #e8cf98; border-radius: 10px; color: #755016; background: #fff9e9; font-size: 12px; }
     .ii-privacy { color: var(--ii-muted); font-size: 11px; }
-    .ii-history-tools { max-width: 920px; margin: 0 auto 16px; display: flex; gap: 10px; }
-    .ii-history-note { max-width: 920px; margin: 0 auto 12px; color: var(--ii-muted); font-size: 12px; }
-    .ii-history-tools input {
-      flex: 1; min-height: 40px; padding: 8px 11px; border: 1px solid #cbc7bd; border-radius: 9px; outline: none;
+    .ii-history-tools { max-width: 1100px; margin: 0 auto 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .ii-history-note { max-width: 1100px; margin: 0 auto 12px; color: var(--ii-muted); font-size: 12px; }
+    .ii-history-tools input, .ii-history-tools select {
+      min-height: 40px; padding: 8px 11px; border: 1px solid #cbc7bd; border-radius: 9px; color: var(--ii-ink); background: var(--ii-surface); outline: none;
     }
-    .ii-history-tools input:focus { border-color: var(--ii-accent); box-shadow: 0 0 0 3px rgba(71,88,214,.1); }
-    .ii-history-list { max-width: 920px; margin: 0 auto; display: grid; gap: 10px; }
+    .ii-history-tools input { flex: 1 1 320px; }
+    .ii-history-tools select { flex: 0 1 170px; min-width: 150px; }
+    .ii-history-tools input:focus, .ii-history-tools select:focus { border-color: var(--ii-accent); box-shadow: 0 0 0 3px rgba(71,88,214,.1); }
+    .ii-history-list { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .ii-history-list > .ii-empty { grid-column: 1 / -1; }
     .ii-history-item {
-      display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 14px; align-items: center;
+      min-width: 0; min-height: 330px; display: flex; flex-direction: column; gap: 11px;
       padding: 10px; border: 1px solid var(--ii-line); border-radius: 12px; background: var(--ii-surface);
     }
-    .ii-history-thumb { width: 112px; height: 76px; object-fit: cover; border: 1px solid #ddd8cf; border-radius: 8px; background: #ece9e2; }
-    .ii-history-thumb-wrap { position: relative; width: 112px; height: 76px; }
+    .ii-history-thumb { width: 100%; height: 160px; display: block; object-fit: cover; border: 1px solid #ddd8cf; border-radius: 8px; background: #ece9e2; }
+    .ii-history-thumb-wrap { position: relative; width: 100%; height: 160px; }
     .ii-history-thumb-wrap span { position: absolute; right: 5px; bottom: 5px; padding: 2px 6px; border-radius: 999px; color: white; background: rgba(23,32,51,.82); font-size: 10px; }
     .ii-history-copy { min-width: 0; }
-    .ii-history-copy h3 { margin: 0 0 4px; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ii-history-copy h3 { margin: 0 0 4px; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .ii-history-copy p { margin: 0 0 5px; color: var(--ii-muted); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .ii-history-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--ii-muted); font-size: 10px; }
-    .ii-history-actions { display: flex; gap: 6px; }
+    .ii-history-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--ii-line); }
     .ii-toast-slot { position: fixed; z-index: 2147483647; left: 50%; bottom: 28px; transform: translateX(-50%); pointer-events: none; }
     .ii-toast {
       max-width: min(480px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid #313b52;
@@ -2548,11 +2556,10 @@
       .ii-settings-tab small { display: none; }
       .ii-section { padding: 14px; }
       .ii-color-row { grid-template-columns: minmax(0, 1fr) 62px 72px; }
-      .ii-history-item { grid-template-columns: 84px minmax(0, 1fr); }
-      .ii-history-thumb { width: 84px; height: 68px; }
-      .ii-history-thumb-wrap { width: 84px; height: 68px; }
-      .ii-history-actions { grid-column: 1 / -1; justify-content: flex-end; }
-      .ii-history-tools { flex-wrap: wrap; }
+      .ii-history-list { grid-template-columns: 1fr; }
+      .ii-history-item { min-height: 0; }
+      .ii-history-thumb, .ii-history-thumb-wrap { height: 180px; }
+      .ii-history-tools select { flex: 1 1 150px; }
       @keyframes ii-drawer { from { opacity: .7; transform: translateY(28px); } }
     }
     @media (max-width: 430px) {
@@ -2760,6 +2767,7 @@
     appRoot.addEventListener('click', handleAppClick);
     appRoot.addEventListener('submit', handleAppSubmit);
     appRoot.addEventListener('input', handleAppInput);
+    appRoot.addEventListener('change', handleAppChange);
     appRoot.addEventListener('focusin', handleAppFocusIn);
     appRoot.addEventListener('keydown', handleAppKeydown);
     appRoot.addEventListener('load', (event) => {
@@ -3256,7 +3264,10 @@
       height: image?.height || 0,
       fingerprint: image?.sha256 || image?.sourceUrlFingerprint || url,
       fallbackUrl: image?.fallbackSource || image?.thumbnail || '',
-      isOriginal: isCurrent || Boolean(image?.sourceHint)
+      isOriginal: isCurrent || Boolean(image?.sourceHint),
+      conversation,
+      conversationId: conversation?.id || '',
+      imageIndex
     };
   }
 
@@ -3318,7 +3329,7 @@
     if (!item) return '';
     const count = state.previewGallery.length;
     return `
-      <div class="ii-image-viewer" data-image-viewer role="dialog" aria-modal="true" aria-label="全屏图片预览">
+      <div class="ii-image-viewer" data-image-viewer role="dialog" aria-modal="true" aria-label="全屏图片预览" tabindex="-1">
         <header class="ii-viewer-header">
           <div class="ii-viewer-title"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.subtitle || '图片预览')} · ${state.previewIndex + 1} / ${count}</small></div>
           <div class="ii-viewer-header-actions">
@@ -3345,14 +3356,54 @@
     appRoot.querySelector('[data-image-viewer]')?.remove();
     if (!state.previewGallery[state.previewIndex]) return;
     appMount.insertAdjacentHTML('beforeend', renderImageViewer());
+    appRoot.querySelector('[data-image-viewer]')?.focus({ preventScroll: true });
     requestAnimationFrame(updateViewerImageSize);
   }
 
-  function closeImagePreview() {
+  function focusAnalysisImage(imageIndex) {
+    requestAnimationFrame(() => {
+      const bubble = appRoot.querySelector(`.ii-image-bubble[data-image-index="${imageIndex}"]`);
+      if (!bubble) return;
+      bubble.focus({ preventScroll: true });
+      bubble.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    });
+  }
+
+  function restoreStoredConversation(record) {
+    if (!record) return false;
+    const images = (record.images || (record.image ? [record.image] : [])).map((image) => {
+      const source = normalizeOriginalImageUrl(image?.sourceHint || '') || image?.thumbnail || '';
+      return {
+        ...image,
+        source,
+        previewUrl: source,
+        fallbackSource: image?.thumbnail || ''
+      };
+    });
+    state.current = {
+      ...record,
+      status: 'complete',
+      error: '',
+      element: null,
+      elements: [],
+      images,
+      image: images[0] || null
+    };
+    return true;
+  }
+
+  function closeImagePreview({ restoreSelection = true } = {}) {
+    const selectedItem = state.previewGallery[state.previewIndex] || null;
     state.previewGallery = [];
     state.previewIndex = 0;
     state.previewZoom = 1;
     appRoot.querySelector('[data-image-viewer]')?.remove();
+    if (!restoreSelection || !selectedItem?.conversation) return;
+    const changedConversation = selectedItem.conversationId !== state.current?.id;
+    if (changedConversation && !restoreStoredConversation(selectedItem.conversation)) return;
+    state.tab = 'analysis';
+    if (changedConversation) renderApp();
+    focusAnalysisImage(selectedItem.imageIndex);
   }
 
   function updateViewerImageSize() {
@@ -3721,7 +3772,7 @@
         </div>`;
     }
     return `
-      <section class="ii-image-bubble">
+      <section class="ii-image-bubble" data-image-index="${imageIndex}" tabindex="-1">
         ${head}
         ${body}
         <details class="ii-context">
@@ -3948,28 +3999,45 @@
 
   function filteredHistory() {
     const query = state.historyQuery.trim().toLowerCase();
-    if (!query) return state.history;
-    return state.history.filter((record) => [
-      record.analysis?.batch_title_zh,
-      record.analysis?.batch_overview_zh,
-      ...(record.analysis?.images || []).flatMap((image) => [image.title_zh, image.overview_zh, image.image_type_zh]),
-      record.page?.title,
-      record.page?.host
-    ].some((value) => String(value || '').toLowerCase().includes(query)));
+    return state.history.filter((record) => {
+      const analysisImages = record.analysis?.images || [];
+      if (state.historyHostFilter && record.page?.host !== state.historyHostFilter) return false;
+      if (state.historyTypeFilter && !analysisImages.some((image) => image.image_type_zh === state.historyTypeFilter)) return false;
+      if (!query) return true;
+      return [
+        record.analysis?.batch_title_zh,
+        record.analysis?.batch_overview_zh,
+        ...analysisImages.flatMap((image) => [image.title_zh, image.overview_zh, image.image_type_zh]),
+        record.page?.title,
+        record.page?.host
+      ].some((value) => String(value || '').toLowerCase().includes(query));
+    });
   }
 
   function renderHistory() {
+    const hosts = [...new Set(state.history.map((record) => record.page?.host).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const imageTypes = [...new Set(state.history.flatMap((record) => record.analysis?.images || []).map((image) => image.image_type_zh).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    if (state.historyHostFilter && !hosts.includes(state.historyHostFilter)) state.historyHostFilter = '';
+    if (state.historyTypeFilter && !imageTypes.includes(state.historyTypeFilter)) state.historyTypeFilter = '';
     const records = filteredHistory();
     return `
       <div class="ii-history">
         <p class="ii-history-note">仅保存在当前浏览器。原图不入库，历史预览使用压缩缩略图。</p>
         <div class="ii-history-tools">
           <input type="search" data-input="history-search" value="${escapeHTML(state.historyQuery)}" placeholder="搜索图片类型、标题、页面或内容" aria-label="搜索历史会话">
+          <select data-input="history-host-filter" aria-label="按站点筛选历史会话">
+            <option value="">全部站点</option>
+            ${hosts.map((host) => `<option value="${escapeHTML(host)}" ${state.historyHostFilter === host ? 'selected' : ''}>${escapeHTML(host)}</option>`).join('')}
+          </select>
+          <select data-input="history-type-filter" aria-label="按图片类型筛选历史会话">
+            <option value="">全部类型</option>
+            ${imageTypes.map((type) => `<option value="${escapeHTML(type)}" ${state.historyTypeFilter === type ? 'selected' : ''}>${escapeHTML(type)}</option>`).join('')}
+          </select>
           <button class="ii-button danger" type="button" data-action="clear-history" ${state.history.length ? '' : 'disabled'}>${icon('trash', 15)}清空全部</button>
         </div>
         <div class="ii-history-list">
           ${state.historyLoading ? '<div class="ii-empty"><div class="ii-empty-card"><div class="ii-loader-ring"></div><p>正在读取本地会话…</p></div></div>' : ''}
-          ${!state.historyLoading && !records.length ? '<div class="ii-empty"><div class="ii-empty-card"><div class="ii-empty-icon">' + icon('history', 27) + '</div><h2>还没有匹配的会话</h2><p>解析完成的图片会自动出现在这里。</p></div></div>' : ''}
+          ${!state.historyLoading && !records.length ? '<div class="ii-empty"><div class="ii-empty-card"><div class="ii-empty-icon">' + icon('history', 27) + `</div><h2>${state.history.length ? '没有匹配结果' : '还没有会话'}</h2><p>${state.history.length ? '请调整搜索词或筛选条件。' : '解析完成的图片会自动出现在这里。'}</p></div></div>` : ''}
           ${records.map((record) => `
             <article class="ii-history-item">
               ${(record.images?.[0] || record.image)?.thumbnail ? `<div class="ii-history-thumb-wrap"><img class="ii-history-thumb" src="${escapeHTML((record.images?.[0] || record.image).thumbnail)}" alt="历史图片缩略图">${(record.images?.length || 1) > 1 ? `<span>${record.images.length} 张</span>` : ''}</div>` : '<div class="ii-history-thumb"></div>'}
@@ -4109,18 +4177,18 @@
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathData);
       path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', '#5f6fdd');
-      path.setAttribute('stroke-width', '1.25');
-      path.setAttribute('stroke-opacity', '.52');
+      path.setAttribute('stroke', '#858c98');
+      path.setAttribute('stroke-width', '.85');
+      path.setAttribute('stroke-opacity', '.34');
       path.setAttribute('class', 'ii-link-line');
       path.setAttribute('data-image-index', card.dataset.imageIndex || '0');
       path.setAttribute('data-index', card.dataset.index || '0');
       const endpoint = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       endpoint.setAttribute('cx', String(endX));
       endpoint.setAttribute('cy', String(endY));
-      endpoint.setAttribute('r', '2.25');
-      endpoint.setAttribute('fill', '#5f6fdd');
-      endpoint.setAttribute('fill-opacity', '.72');
+      endpoint.setAttribute('r', '1.75');
+      endpoint.setAttribute('fill', '#858c98');
+      endpoint.setAttribute('fill-opacity', '.46');
       endpoint.setAttribute('class', 'ii-link-line');
       endpoint.setAttribute('data-image-index', card.dataset.imageIndex || '0');
       endpoint.setAttribute('data-index', card.dataset.index || '0');
@@ -4154,7 +4222,7 @@
   }
 
   function closeApp() {
-    closeImagePreview();
+    closeImagePreview({ restoreSelection: false });
     state.backgrounded = ['loading', 'chat-loading'].includes(state.current?.status);
     state.open = false;
     renderApp();
@@ -4367,6 +4435,15 @@
     const next = appRoot.querySelector('[data-input="history-search"]');
     next?.focus();
     next?.setSelectionRange(cursor, cursor);
+  }
+
+  function handleAppChange(event) {
+    const input = event.target.dataset.input;
+    if (!['history-host-filter', 'history-type-filter'].includes(input)) return;
+    if (input === 'history-host-filter') state.historyHostFilter = event.target.value;
+    if (input === 'history-type-filter') state.historyTypeFilter = event.target.value;
+    renderApp();
+    requestAnimationFrame(() => appRoot.querySelector(`[data-input="${input}"]`)?.focus());
   }
 
   function handleAppFocusIn(event) {
@@ -4694,25 +4771,7 @@
 
   function openHistoryRecord(id) {
     const record = state.history.find((item) => item.id === id);
-    if (!record) return;
-    const images = (record.images || (record.image ? [record.image] : [])).map((image) => {
-      const source = normalizeOriginalImageUrl(image?.sourceHint || '') || image?.thumbnail || '';
-      return {
-        ...image,
-        source,
-        previewUrl: source,
-        fallbackSource: image?.thumbnail || ''
-      };
-    });
-    state.current = {
-      ...record,
-      status: 'complete',
-      error: '',
-      element: null,
-      elements: [],
-      images,
-      image: images[0] || null
-    };
+    if (!restoreStoredConversation(record)) return;
     state.tab = 'analysis';
     renderApp();
   }
