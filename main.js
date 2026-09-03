@@ -2485,17 +2485,28 @@
     .ii-history-list { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
     .ii-history-list > .ii-empty { grid-column: 1 / -1; }
     .ii-history-item {
-      min-width: 0; min-height: 285px; display: flex; flex-direction: column; gap: 8px;
+      position: relative; min-width: 0; display: grid; grid-template-rows: 124px auto; gap: 8px;
       padding: 8px; border: 1px solid var(--ii-line); border-radius: 11px; background: var(--ii-surface);
     }
-    .ii-history-thumb { width: 100%; height: 124px; display: block; object-fit: cover; border: 1px solid #ddd8cf; border-radius: 7px; background: #ece9e2; }
-    .ii-history-thumb-wrap { position: relative; width: 100%; height: 124px; }
-    .ii-history-thumb-wrap span { position: absolute; right: 5px; bottom: 5px; padding: 2px 6px; border-radius: 999px; color: white; background: rgba(23,32,51,.82); font-size: 10px; }
-    .ii-history-copy { min-width: 0; }
-    .ii-history-copy h3 { margin: 0 0 3px; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .ii-history-copy p { margin: 0 0 4px; color: var(--ii-muted); font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .ii-history-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--ii-muted); font-size: 10px; }
-    .ii-history-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--ii-line); }
+    .ii-history-thumb { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform .16s ease; }
+    .ii-history-thumb-wrap {
+      position: relative; width: 100%; height: 124px; padding: 0; overflow: hidden;
+      border: 1px solid #ddd8cf; border-radius: 7px; background: #ece9e2; cursor: pointer;
+    }
+    .ii-history-thumb-wrap:hover .ii-history-thumb { transform: scale(1.02); }
+    .ii-history-thumb-count { position: absolute; right: 5px; bottom: 5px; padding: 2px 6px; border-radius: 999px; color: white; background: rgba(23,32,51,.82); font-size: 10px; }
+    .ii-history-thumb-placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: var(--ii-muted); }
+    .ii-history-delete {
+      position: absolute; z-index: 2; top: 14px; right: 14px; width: 30px; height: 30px;
+      display: grid; place-items: center; padding: 0;
+      border: 1px solid rgba(221,216,207,.9); border-radius: 8px; color: var(--ii-ink); background: rgba(255,255,255,.92);
+      box-shadow: 0 2px 8px rgba(23,32,51,.14); cursor: pointer;
+    }
+    .ii-history-delete:hover { color: var(--ii-danger); background: white; }
+    .ii-history-copy { min-width: 0; display: grid; grid-template-rows: 2.8em 3.2em auto; }
+    .ii-history-copy h3 { height: 2.8em; margin: 0; font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .ii-history-copy p { height: 3.2em; margin: 0; color: var(--ii-muted); font-size: 11px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .ii-history-meta { height: 30px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px 8px; overflow: hidden; color: var(--ii-muted); font-size: 10px; }
     .ii-toast-slot { position: fixed; z-index: 2147483647; left: 50%; bottom: 28px; transform: translateX(-50%); pointer-events: none; }
     .ii-toast {
       max-width: min(480px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid #313b52;
@@ -2557,8 +2568,8 @@
       .ii-section { padding: 14px; }
       .ii-color-row { grid-template-columns: minmax(0, 1fr) 62px 72px; }
       .ii-history-list { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-      .ii-history-item { min-height: 0; }
-      .ii-history-thumb, .ii-history-thumb-wrap { height: 132px; }
+      .ii-history-item { grid-template-rows: 132px auto; }
+      .ii-history-thumb-wrap { height: 132px; }
       .ii-history-tools select { flex: 1 1 150px; }
       @keyframes ii-drawer { from { opacity: .7; transform: translateY(28px); } }
     }
@@ -2575,7 +2586,8 @@
       .ii-viewer-header .ii-viewer-button > span { display: none; }
       .ii-viewer-canvas { padding: 18px 52px; }
       .ii-history-list { grid-template-columns: 1fr; }
-      .ii-history-thumb, .ii-history-thumb-wrap { height: 160px; }
+      .ii-history-item { grid-template-rows: 160px auto; }
+      .ii-history-thumb-wrap { height: 160px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .001ms !important; scroll-behavior: auto !important; transition-duration: .001ms !important; }
@@ -4040,11 +4052,18 @@
         <div class="ii-history-list">
           ${state.historyLoading ? '<div class="ii-empty"><div class="ii-empty-card"><div class="ii-loader-ring"></div><p>正在读取本地会话…</p></div></div>' : ''}
           ${!state.historyLoading && !records.length ? '<div class="ii-empty"><div class="ii-empty-card"><div class="ii-empty-icon">' + icon('history', 27) + `</div><h2>${state.history.length ? '没有匹配结果' : '还没有会话'}</h2><p>${state.history.length ? '请调整搜索词或筛选条件。' : '解析完成的图片会自动出现在这里。'}</p></div></div>` : ''}
-          ${records.map((record) => `
+          ${records.map((record) => {
+            const firstImage = record.images?.[0] || record.image;
+            const title = record.analysis?.images?.[0]?.title_zh || record.analysis?.batch_title_zh || '图片解析';
+            return `
             <article class="ii-history-item">
-              ${(record.images?.[0] || record.image)?.thumbnail ? `<div class="ii-history-thumb-wrap"><img class="ii-history-thumb" src="${escapeHTML((record.images?.[0] || record.image).thumbnail)}" alt="历史图片缩略图">${(record.images?.length || 1) > 1 ? `<span>${record.images.length} 张</span>` : ''}</div>` : '<div class="ii-history-thumb"></div>'}
+              <button class="ii-history-thumb-wrap" type="button" data-action="open-history" data-id="${escapeHTML(record.id)}" aria-label="打开解析：${escapeHTML(title)}">
+                ${firstImage?.thumbnail ? `<img class="ii-history-thumb" src="${escapeHTML(firstImage.thumbnail)}" alt="">` : `<span class="ii-history-thumb-placeholder">${icon('image', 24)}</span>`}
+                ${(record.images?.length || 1) > 1 ? `<span class="ii-history-thumb-count">${record.images.length} 张</span>` : ''}
+              </button>
+              <button class="ii-history-delete" type="button" data-action="delete-history" data-id="${escapeHTML(record.id)}" aria-label="删除会话" title="删除会话">${icon('trash', 15)}</button>
               <div class="ii-history-copy">
-                <h3>${escapeHTML(record.analysis?.images?.[0]?.title_zh || record.analysis?.batch_title_zh || '图片解析')}</h3>
+                <h3>${escapeHTML(title)}</h3>
                 <p>${escapeHTML(record.analysis?.images?.[0]?.overview_zh || record.analysis?.batch_overview_zh || '')}</p>
                 <div class="ii-history-meta">
                   <span>${escapeHTML(record.analysis?.images?.[0]?.image_type_zh || '图片')}</span>
@@ -4053,11 +4072,8 @@
                   <span>${escapeHTML(record.model || '')}</span>
                 </div>
               </div>
-              <div class="ii-history-actions">
-                <button class="ii-button" type="button" data-action="open-history" data-id="${escapeHTML(record.id)}">继续</button>
-                <button class="ii-icon-button" type="button" data-action="delete-history" data-id="${escapeHTML(record.id)}" aria-label="删除会话">${icon('trash', 16)}</button>
-              </div>
-            </article>`).join('')}
+            </article>`;
+          }).join('')}
         </div>
       </div>`;
   }
