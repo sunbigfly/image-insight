@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.0.2
+// @version      1.0.3
 // @description  主动解析网页图片，在对应区域旁展示中文理解，并基于图片上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -25,7 +25,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.0.2）
+ * 产品契约（v1.0.3）
  * 1. 处理站点规则范围内实际可见的 <img>，不设最小尺寸；桌面端悬停显示识图与多选入口，触屏端长按触发。
  *    默认仅匹配 X/Twitter 与 Reddit；其他网站必须先在油猴中添加用户匹配，再在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才下载图片并调用 AI，不自动扫描或上传图片。
@@ -45,7 +45,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.0.2';
+  const APP_VERSION = '1.0.3';
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const CONFIG_KEY = 'image-insight-config-v1';
   const HISTORY_INDEX_KEY = 'image-insight-history-index-v1';
@@ -3091,14 +3091,15 @@
       .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index));
     if (cards.length <= 1) return;
     const split = balancedColumnSplit(cards, (card) => card.getBoundingClientRect().height);
-    const syncColumn = (column, expected) => {
+    const syncColumn = (column, expected, side) => {
+      expected.forEach((card) => { card.dataset.side = side; });
       const current = [...column.querySelectorAll(':scope > .ii-region-card[data-index]')];
       if (current.length === expected.length && current.every((card, index) => card === expected[index])) return;
       const skeleton = column.querySelector(':scope > .ii-skeleton-card');
       expected.forEach((card) => column.insertBefore(card, skeleton));
     };
-    syncColumn(left, cards.slice(0, split));
-    syncColumn(right, cards.slice(split));
+    syncColumn(left, cards.slice(0, split), 'left');
+    syncColumn(right, cards.slice(split), 'right');
   }
 
   function layoutRegionMarkers(regions, imageWidth = 1, imageHeight = 1, minDistance = 38) {
