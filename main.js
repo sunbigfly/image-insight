@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.1.5
+// @version      1.1.6
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.1.5）
+ * 产品契约（v1.1.6）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.1.5';
+  const APP_VERSION = '1.1.6';
   const ANALYSIS_CONTRACT_VERSION = 17;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
   const HOSTED_VIDEO_RESTORE_HOOK = '__imageInsightRestoreHostedVideoPlayers';
@@ -6413,6 +6413,8 @@
     appRoot.addEventListener('change', handleAppChange);
     appRoot.addEventListener('focusin', handleAppFocusIn);
     appRoot.addEventListener('keydown', handleAppKeydown);
+    appRoot.addEventListener('keypress', stopAppKeyboardEventPropagation);
+    appRoot.addEventListener('keyup', stopAppKeyboardEventPropagation);
     appRoot.addEventListener('dblclick', handleAnnotatedImageResizeDoubleClick);
     appRoot.addEventListener('pointerdown', handleAnnotatedImageResizePointerDown);
     appRoot.addEventListener('pointermove', handleAnnotatedImageResizePointerMove);
@@ -8747,8 +8749,8 @@
               </div>
               <div class="ii-field full">
                 <label for="ii-api-key">API Key</label>
-                <input id="ii-api-key" name="apiKey" type="password" required autocomplete="off" spellcheck="false" value="${escapeHTML(config.apiKey)}" placeholder="sk-…">
-                <small>仅存于油猴脚本存储，不写入页面、本地会话数据库或导出内容。</small>
+                <input id="ii-api-key" name="apiKey" type="password" autocomplete="off" spellcheck="false" value="${escapeHTML(config.apiKey)}" placeholder="sk-…">
+                <small>仅存于油猴脚本存储，不写入页面、本地会话数据库或导出内容；只使用独立转写接口时可留空。</small>
               </div>
               <div class="ii-field">
                 <label for="ii-model">视觉模型</label>
@@ -9952,7 +9954,12 @@
     changePreviewZoom(state.previewZoom * factor);
   }
 
+  function stopAppKeyboardEventPropagation(event) {
+    event.stopPropagation();
+  }
+
   function handleAppKeydown(event) {
+    stopAppKeyboardEventPropagation(event);
     const resizeHandle = event.target.closest?.('[data-image-resize-edge]');
     if (resizeHandle && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) {
       event.preventDefault();
@@ -10171,7 +10178,7 @@
       throw new Error('API Base URL 格式不正确。');
     }
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('API Base URL 必须使用 http 或 https。');
-    if (!apiKey) throw new Error('API Key 不能为空。');
+    if (requireModel && !apiKey) throw new Error('图片解析需要填写主 API Key。');
     if (requireModel && !model) throw new Error('请选择或填写一个视觉模型。');
     if (transcriptionApiKey) {
       let transcriptionUrl;
