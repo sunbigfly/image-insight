@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.0
+// @version      1.3.1
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.3.0）
+ * 产品契约（v1.3.1）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -8057,7 +8057,9 @@
       box-shadow: 0 8px 28px rgba(12,17,30,.26); cursor: pointer; pointer-events: auto; opacity: .82;
       transition: opacity .14s ease, transform .14s ease;
     }
-    .ii-history-launcher:hover { opacity: 1; transform: translateY(-1px); }
+    .ii-history-launcher { touch-action: none; user-select: none; }
+    .ii-history-launcher:hover { opacity: 1; }
+    .ii-history-launcher.is-dragging { cursor: grabbing; }
     .ii-batch-dock {
       position: fixed; left: 50%; bottom: 24px; display: none; align-items: center; gap: 9px;
       min-height: 50px; padding: 7px 8px 7px 14px; border: 1px solid rgba(255,255,255,.22);
@@ -8297,7 +8299,7 @@
     historyLauncher = document.createElement('button');
     historyLauncher.className = 'ii-history-launcher';
     historyLauncher.type = 'button';
-    historyLauncher.title = '打开图像深读历史';
+    historyLauncher.title = '打开图像深读历史（可拖动，按网站记住位置）';
     historyLauncher.setAttribute('aria-label', '打开图像深读历史');
     historyLauncher.innerHTML = icon('history', 20);
     batchDock = document.createElement('div');
@@ -8372,7 +8374,7 @@
       toggleBatchImage(image);
       positionHoverButton();
     });
-    historyLauncher.addEventListener('click', () => openApp('history'));
+    setupHistoryLauncherDragging();
     batchDock.addEventListener('click', (event) => {
       const action = event.target.closest?.('[data-dock-action]')?.dataset.dockAction;
       if (action === 'cancel') exitBatchMode();
@@ -8445,6 +8447,95 @@
         value: () => restoreHostedVideoPlayers()
       });
     } catch { /* The current instance can still restore during ordinary close and navigation. */ }
+  }
+
+  function setupHistoryLauncherDragging() {
+    const button = historyLauncher;
+    const storageKey = `image-insight-history-position-v1:${location.origin}`;
+    let position = null;
+    let drag = null;
+    let suppressClick = false;
+    try {
+      const saved = JSON.parse(GM_getValue(storageKey, 'null'));
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        position = { x: clamp(saved.x, 0, 1), y: clamp(saved.y, 0, 1) };
+      }
+    } catch { /* An unavailable or invalid saved position keeps the default corner. */ }
+    const bounds = () => {
+      const viewport = window.visualViewport;
+      const left = (viewport?.offsetLeft || 0) + 8;
+      const top = (viewport?.offsetTop || 0) + 8;
+      return {
+        left, top,
+        width: Math.max(0, (viewport?.width || window.innerWidth) - button.offsetWidth - 16),
+        height: Math.max(0, (viewport?.height || window.innerHeight) - button.offsetHeight - 16)
+      };
+    };
+    const renderPosition = () => {
+      if (!position) return;
+      const area = bounds();
+      Object.assign(button.style, {
+        right: 'auto', bottom: 'auto',
+        left: `${area.left + position.x * area.width}px`,
+        top: `${area.top + position.y * area.height}px`
+      });
+    };
+    button.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      event.stopPropagation();
+      suppressClick = false;
+      const rect = button.getBoundingClientRect();
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+        left: rect.left, top: rect.top, moved: false, previous: position };
+      button.setPointerCapture(event.pointerId);
+    });
+    button.addEventListener('pointermove', (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+      event.preventDefault();
+      event.stopPropagation();
+      drag.moved = true;
+      suppressClick = true;
+      button.classList.add('is-dragging');
+      const area = bounds();
+      position = {
+        x: area.width ? clamp((drag.left + dx - area.left) / area.width, 0, 1) : 0,
+        y: area.height ? clamp((drag.top + dy - area.top) / area.height, 0, 1) : 0
+      };
+      renderPosition();
+    });
+    const finish = (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const completed = drag;
+      drag = null;
+      button.classList.remove('is-dragging');
+      if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
+      if (event.type === 'pointerup' && completed.moved) {
+        try { GM_setValue(storageKey, JSON.stringify(position)); } catch { /* Keep the current position for this page. */ }
+      } else if (completed.moved) {
+        position = completed.previous;
+        if (position) renderPosition();
+        else ['left', 'top', 'right', 'bottom'].forEach((property) => button.style.removeProperty(property));
+      }
+    };
+    button.addEventListener('pointerup', finish);
+    button.addEventListener('pointercancel', finish);
+    button.addEventListener('lostpointercapture', finish);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (suppressClick && event.detail !== 0) {
+        event.preventDefault();
+        suppressClick = false;
+        return;
+      }
+      openApp('history');
+    });
+    window.addEventListener('resize', renderPosition);
+    window.visualViewport?.addEventListener('resize', renderPosition);
+    window.visualViewport?.addEventListener('scroll', renderPosition);
+    renderPosition();
   }
 
   function applyTypography() {
