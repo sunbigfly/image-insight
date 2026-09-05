@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.2
+// @version      1.3.3
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.3.2）
+ * 产品契约（v1.3.3）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.2';
+  const APP_VERSION = '1.3.3';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -8313,7 +8313,7 @@
     hoverStyle.textContent = HOVER_CSS;
     historyLauncher = document.createElement('div');
     historyLauncher.className = 'ii-history-launcher';
-    historyLauncher.innerHTML = `<button type="button" class="ii-history-launcher-open" title="打开图像深读历史（可拖动，按网站记住位置）" aria-label="打开图像深读历史">${icon('history', 20)}</button><button type="button" class="ii-history-launcher-close" title="关闭历史入口（刷新页面后恢复）" aria-label="关闭历史入口">${icon('close', 12)}</button>`;
+    historyLauncher.innerHTML = `<button type="button" class="ii-history-launcher-open" title="打开图像深读历史（可拖动，按网站记住位置）" aria-label="打开图像深读历史">${icon('history', 20)}</button><button type="button" class="ii-history-launcher-close" title="隐藏本站历史图标（可从油猴菜单恢复）" aria-label="隐藏本站历史图标">${icon('close', 12)}</button>`;
     batchDock = document.createElement('div');
     batchDock.className = 'ii-batch-dock';
     batchDock.setAttribute('role', 'toolbar');
@@ -8464,6 +8464,8 @@
   function setupHistoryLauncherDragging() {
     const button = historyLauncher;
     const storageKey = `image-insight-history-position-v1:${location.origin}`;
+    const hiddenStorageKey = `image-insight-history-hidden-v1:${location.origin}`;
+    try { button.hidden = GM_getValue(hiddenStorageKey, false) === true; } catch { /* Keep the launcher accessible if storage is unavailable. */ }
     let position = null;
     let drag = null;
     let suppressClick = false;
@@ -8484,7 +8486,7 @@
       };
     };
     const renderPosition = () => {
-      if (!position) return;
+      if (!position || button.hidden) return;
       const area = bounds();
       Object.assign(button.style, {
         right: 'auto', bottom: 'auto',
@@ -8544,6 +8546,7 @@
       if (event.target.closest?.('.ii-history-launcher-close')) {
         event.preventDefault();
         button.hidden = true;
+        try { GM_setValue(hiddenStorageKey, true); } catch { /* Still hide for the current page if storage is unavailable. */ }
         return;
       }
       if (suppressClick && event.detail !== 0) {
@@ -8556,6 +8559,12 @@
     window.addEventListener('resize', renderPosition);
     window.visualViewport?.addEventListener('resize', renderPosition);
     window.visualViewport?.addEventListener('scroll', renderPosition);
+    GM_registerMenuCommand(`${APP_NAME} v${APP_VERSION} · 显示历史图标（本站）`, () => {
+      button.hidden = false;
+      suppressClick = false;
+      try { GM_setValue(hiddenStorageKey, false); } catch { /* Still restore for the current page if storage is unavailable. */ }
+      renderPosition();
+    });
     renderPosition();
   }
 
