@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.3
+// @version      1.3.4
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.3.3）
+ * 产品契约（v1.3.4）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.3';
+  const APP_VERSION = '1.3.4';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -11197,7 +11197,7 @@
       target,
       video,
       wasPlaying: !video.paused && !video.ended,
-      allowManualPlaybackUntil: 0,
+      playbackTakenOver: false,
       trackModes: new Map(),
       captionSurfaces: new Map(),
       active: true,
@@ -11206,9 +11206,7 @@
     const release = () => {
       if (!block.active) return false;
       block.active = false;
-      video.removeEventListener('play', block.keepPaused);
-      video.ownerDocument?.removeEventListener('pointerdown', block.markManualPlayback, true);
-      video.ownerDocument?.removeEventListener('keydown', block.markManualKeyboardPlayback, true);
+      video.removeEventListener('play', block.markPlaybackTakenOver);
       blockedVideoSubtitlePresentations.delete(video);
       for (const [captionSurface, inlineVisibility] of block.captionSurfaces) {
         if (inlineVisibility.value) captionSurface.style.setProperty('visibility', inlineVisibility.value, inlineVisibility.priority);
@@ -11228,47 +11226,24 @@
         if (notifyOnFailure) showToast('译文字幕已加载，请点击播放继续观看。', true);
       }
     };
-    const eventTargetsVideo = (event) => {
-      const rect = video.getBoundingClientRect?.();
-      if (!rect || rect.width < 1 || rect.height < 1) return false;
-      if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-        return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-      }
-      return Boolean(event.target && (event.target === video || event.target.contains?.(video) || video.parentElement?.contains?.(event.target)));
-    };
-    block.markManualPlayback = (event) => {
-      if (block.active && eventTargetsVideo(event)) block.allowManualPlaybackUntil = performance.now() + 1800;
-    };
-    block.markManualKeyboardPlayback = (event) => {
-      if (block.active && [' ', 'Enter', 'k', 'K'].includes(event.key) && eventTargetsVideo(event)) {
-        block.allowManualPlaybackUntil = performance.now() + 1800;
-      }
-    };
-    block.keepPaused = () => {
-      if (!block.active) return;
-      if (performance.now() <= block.allowManualPlaybackUntil) {
-        video.removeEventListener('play', block.keepPaused);
-        return;
-      }
-      video.pause();
+    block.markPlaybackTakenOver = () => {
+      if (block.active) block.playbackTakenOver = true;
     };
     block.gate = {
       reveal() {
         return release();
       },
       play() {
-        play(true);
+        if (!block.playbackTakenOver) play(true);
       },
       rollback() {
-        const shouldResume = block.wasPlaying;
+        const shouldResume = block.wasPlaying && !block.playbackTakenOver;
         if (release() && shouldResume) play(false);
       }
     };
     blockedVideoSubtitlePresentations.set(video, block);
-    video.addEventListener('play', block.keepPaused);
-    video.ownerDocument?.addEventListener('pointerdown', block.markManualPlayback, true);
-    video.ownerDocument?.addEventListener('keydown', block.markManualKeyboardPlayback, true);
     video.pause();
+    video.addEventListener('play', block.markPlaybackTakenOver);
     suppressBlockedVideoSubtitlePresentation(target);
     return block.gate;
   }
@@ -11414,7 +11389,7 @@
 
   function redditNativeCaptionParts(captionRoot, customOverlay) {
     const candidates = [...captionRoot.querySelectorAll('*')].filter((node) => {
-      return !customOverlay.contains(node) && cleanText(node.textContent);
+      return !node.matches('style, script') && !customOverlay.contains(node) && cleanText(node.textContent);
     });
     const textNode = candidates.find((node) => {
       const background = getComputedStyle(node).backgroundColor;
@@ -11444,7 +11419,7 @@
       const translationText = documentNode.createElement('span');
       const sourceRow = documentNode.createElement('div');
       const sourceText = documentNode.createElement('span');
-      const ownsCaptionToggle = Boolean(runtime.toggle && subtitle?.source === 'audio-transcription');
+      const ownsCaptionToggle = Boolean(runtime.toggle);
       const captionToggleState = runtime.toggle ? {
         disabled: Boolean(runtime.toggle.disabled),
         disabledAttribute: runtime.toggle.getAttribute('disabled'),
@@ -11480,7 +11455,14 @@
       sourceRow.appendChild(sourceText);
       overlay.append(translationRow, sourceRow);
       runtime.captionRoot.appendChild(overlay);
+      const exclusiveStyle = documentNode.createElement('style');
+      exclusiveStyle.textContent = ':not([data-ii-reddit-translation]):not([data-ii-reddit-translation] *) { visibility: hidden !important; } [data-ii-reddit-translation], [data-ii-reddit-translation] * { visibility: visible !important; }';
+      runtime.captionRoot.appendChild(exclusiveStyle);
       const update = () => {
+        syncOwnedCaptionToggle();
+        for (const nativeTrack of [...runtime.video.textTracks || []]) {
+          if (['subtitles', 'captions'].includes(nativeTrack.kind) && nativeTrack.mode !== 'hidden') nativeTrack.mode = 'hidden';
+        }
         const native = redditNativeCaptionParts(runtime.captionRoot, overlay);
         const cue = subtitleCueAtTime(controller.cues, Math.max(0, runtime.video.currentTime * 1000));
         if (!controller.enabled) {
@@ -11489,16 +11471,12 @@
           return;
         }
         const translation = cleanText(cue?.translationZh);
-        const source = cleanText(controller.source === 'audio-transcription' ? cue?.text : (native.text || cue?.text));
+        const source = cleanText(cue?.text);
         const visible = Boolean(source && translation);
         if (controller.nativeContainer && controller.nativeContainer !== native.container) controller.nativeContainer.style.removeProperty('visibility');
         controller.nativeContainer = native.container;
         if (!visible) {
-          if (controller.suppressUntranslatedSource && subtitleCueNeedsTranslation(cue?.text)) {
-            controller.nativeContainer?.style.setProperty('visibility', 'hidden');
-          } else {
-            controller.nativeContainer?.style.removeProperty('visibility');
-          }
+          controller.nativeContainer?.style.setProperty('visibility', 'hidden');
           overlay.style.display = 'none';
           return;
         }
@@ -11547,18 +11525,16 @@
       runtime.video.addEventListener('seeking', update);
       const syncOwnedCaptionToggle = () => {
         if (!ownsCaptionToggle || !runtime.toggle) return;
-        runtime.toggle.disabled = false;
-        runtime.toggle.removeAttribute('disabled');
-        runtime.toggle.setAttribute('aria-disabled', 'false');
-        runtime.toggle.setAttribute('aria-pressed', String(controller.enabled));
-        if (runtime.toggle.tabIndex < 0) runtime.toggle.tabIndex = 0;
+        if (!runtime.toggle.disabled) runtime.toggle.disabled = true;
+        if (runtime.toggle.getAttribute('aria-disabled') !== 'true') runtime.toggle.setAttribute('aria-disabled', 'true');
+        if (runtime.toggle.getAttribute('aria-pressed') !== 'true') runtime.toggle.setAttribute('aria-pressed', 'true');
+        if (runtime.toggle.tabIndex !== -1) runtime.toggle.tabIndex = -1;
       };
-      const updateAfterToggle = () => {
-        controller.enabled = !controller.enabled;
-        setTimeout(() => {
-          syncOwnedCaptionToggle();
-          update();
-        }, 0);
+      const updateAfterToggle = (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        syncOwnedCaptionToggle();
+        update();
       };
       runtime.toggle?.addEventListener('click', updateAfterToggle, true);
       controller = {
@@ -11590,6 +11566,7 @@
             else runtime.toggle.setAttribute('tabindex', captionToggleState.tabIndex);
           }
           this.nativeContainer?.style.removeProperty('visibility');
+          exclusiveStyle.remove();
           overlay.remove();
           redditBilingualCaptionControllers.delete(player);
         }
@@ -11634,6 +11611,38 @@
     let controller = xBilingualCaptionControllers.get(video);
     if (!controller) {
       const documentNode = video.ownerDocument;
+      const playerRoot = video.closest('[data-testid="videoComponent"]') || video.closest('[data-testid="videoPlayer"]') || xVideoCaptionContainer(video);
+      const controlStates = new Map();
+      const captionSelector = '[data-testid="videoCaptions"], [data-testid="videoCaption"], [data-testid="closedCaption"]';
+      const captionStates = new Map();
+      const isCaptionControl = (node) => {
+        const label = [node.getAttribute('aria-label'), node.getAttribute('title'), node.getAttribute('data-testid'), node.textContent].filter(Boolean).join(' ');
+        return /(?:\bcaptions?\b|\bsubtitles?\b|\bcc\b|字幕|closedCaption)/i.test(label);
+      };
+      const lockCaptionControls = () => {
+        for (const control of playerRoot?.querySelectorAll('button, [role="button"]') || []) {
+          if (!isCaptionControl(control)) continue;
+          if (!controlStates.has(control)) controlStates.set(control, ['disabled', 'aria-disabled', 'tabindex'].map((name) => [name, control.getAttribute(name)]));
+          if (!control.hasAttribute('disabled')) control.setAttribute('disabled', '');
+          if (control.getAttribute('aria-disabled') !== 'true') control.setAttribute('aria-disabled', 'true');
+          if (control.getAttribute('tabindex') !== '-1') control.setAttribute('tabindex', '-1');
+        }
+        for (const surface of playerRoot?.querySelectorAll(captionSelector) || []) {
+          if (!captionStates.has(surface)) captionStates.set(surface, [surface.style.getPropertyValue('display'), surface.style.getPropertyPriority('display')]);
+          if (surface.style.getPropertyValue('display') !== 'none') surface.style.setProperty('display', 'none', 'important');
+        }
+      };
+      const blockCaptionControl = (event) => {
+        const control = event.target?.closest?.('button, [role="button"]');
+        const captionShortcut = event.type === 'keydown' && ['c', 'C'].includes(event.key) && !event.target?.closest?.('input, textarea, [contenteditable="true"]');
+        if (!captionShortcut && (!control || !isCaptionControl(control))) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      ['click', 'pointerdown', 'keydown'].forEach((type) => playerRoot?.addEventListener(type, blockCaptionControl, true));
+      const ControlObserver = documentNode.defaultView?.MutationObserver || globalThis.MutationObserver;
+      const controlObserver = ControlObserver ? new ControlObserver(lockCaptionControls) : null;
+      if (playerRoot) controlObserver?.observe(playerRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'tabindex', 'aria-label'] });
       const overlay = documentNode.createElement('div');
       const translationRow = documentNode.createElement('div');
       const translationText = documentNode.createElement('span');
@@ -11681,6 +11690,7 @@
       };
       const update = () => {
         if (!video.isConnected) return;
+        lockCaptionControls();
         const container = xVideoCaptionContainer(video);
         if (container && overlay.parentElement !== container) container.appendChild(overlay);
         const cue = subtitleCueAtTime(controller.cues, Math.max(0, video.currentTime * 1000));
@@ -11721,6 +11731,18 @@
         track,
         update,
         destroy() {
+          controlObserver?.disconnect();
+          ['click', 'pointerdown', 'keydown'].forEach((type) => playerRoot?.removeEventListener(type, blockCaptionControl, true));
+          for (const [control, attributes] of controlStates) {
+            for (const [name, value] of attributes) {
+              if (value === null) control.removeAttribute(name);
+              else control.setAttribute(name, value);
+            }
+          }
+          for (const [surface, [value, priority]] of captionStates) {
+            if (value) surface.style.setProperty('display', value, priority);
+            else surface.style.removeProperty('display');
+          }
           resizeObserver?.disconnect();
           video.removeEventListener('timeupdate', update);
           video.removeEventListener('seeking', update);
@@ -11743,7 +11765,7 @@
     return true;
   }
 
-  function installVideoSubtitlePresentation(target, subtitle, forceShow = false) {
+  function installVideoSubtitlePresentation(target, subtitle) {
     const video = videoElementForTarget(target) || target;
     if (suppressBlockedVideoSubtitlePresentation(target)) return;
     if (isRedditMediaPlayer(target) && installRedditBilingualCaptionOverlay(target, subtitle)) {
@@ -11752,7 +11774,7 @@
         .forEach((track) => { track.mode = 'disabled'; });
       return;
     }
-    installBilingualSubtitleTrack(video, subtitle, forceShow || isRedditMediaPlayer(target));
+    installBilingualSubtitleTrack(video, subtitle, true);
     if (installXBilingualCaptionOverlay(video, subtitle)) return;
   }
 
