@@ -4,7 +4,7 @@
   <strong>让网页图片、GIF 与视频从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
-  <img alt="版本" src="https://img.shields.io/badge/version-1.3.4-536af5">
+  <img alt="版本" src="https://img.shields.io/badge/version-1.3.5-536af5">
   <a href="https://github.com/sunbigfly/image-insight/blob/main/LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
@@ -34,7 +34,7 @@
 - 优先读取 Reddit 原生 VTT、浏览器 `textTracks`、`<track>` WebVTT 及公开 HLS/DASH 字幕。
 - 没有可读取的页面 CC 时，可调用兼容 OpenAI Audio Transcriptions 的接口转写音轨；设置中提供 Groq 快速配置和转写模型筛选。
 - 字幕翻译开始前暂停视频并阻塞原始字幕；首条谷歌临时译文从当前播放位置生成后，先安装双语字幕再恢复播放。AI 流式译文完成一条就覆盖一条；AI 完成后停止临时翻译，最终历史只保存 AI 译文。
-- 解析字幕自动使用「译文在上、原文在下」显示；X／Reddit 接管后屏蔽其他字幕显示并禁用 CC 切换入口，不再通过 CC 切换字幕模式。
+- 解析字幕自动使用「译文在上、原文在下」显示；X／Reddit 接管后屏蔽宿主字幕，并直接隐藏播放器底部 CC 入口，只显示工具生成的双语字幕。
 - 字幕解析开始时只暂停一次，等待期间可自行播放、暂停；一旦恢复过播放，字幕就绪或任务失败时不再自动改变播放状态。
 - 中文译文显示在上方，原文显示在下方；字幕保持原时间轴，不把整段译文重复填入每个 cue。
 - 用户主动解析视频内容后，按字幕对话轮次提取最多 9 张关键帧，结合字幕判断教程、访谈、影视、搞笑视频等内容的真实结构。

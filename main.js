@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.4
+// @version      1.3.5
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.3.4）
+ * 产品契约（v1.3.5）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.4';
+  const APP_VERSION = '1.3.5';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -11310,10 +11310,12 @@
     const track = availableTracks.find((candidate) => /^(?:中英双语|中文字幕)/.test(candidate.label || ''))
       || video.addTextTrack('subtitles', label, 'zh-CN');
     const showingSourceTracks = availableTracks.filter((candidate) => candidate !== track && ['subtitles', 'captions'].includes(candidate.kind) && candidate.mode === 'showing');
+    const useXOverlay = isXHostVideo(video) && translatedCount > 0 && currentFullscreenElement() !== video;
+    const presentationMode = useXOverlay ? 'disabled' : 'showing';
     if (video.dataset.bilingualSubtitleSignature === signature) {
       if (forceShow) {
         showingSourceTracks.forEach((candidate) => { candidate.mode = 'hidden'; });
-        track.mode = 'showing';
+        track.mode = presentationMode;
       }
       return;
     }
@@ -11355,7 +11357,7 @@
     const shouldShow = forceShow || previousMode === 'showing' || showingSourceTracks.length || subtitle?.source === 'audio-transcription' || video.classList?.contains('ii-preview-video');
     if (shouldShow) {
       showingSourceTracks.forEach((candidate) => { candidate.mode = 'hidden'; });
-      track.mode = 'showing';
+      track.mode = presentationMode;
     } else {
       track.mode = 'disabled';
     }
@@ -11425,7 +11427,9 @@
         disabledAttribute: runtime.toggle.getAttribute('disabled'),
         ariaDisabled: runtime.toggle.getAttribute('aria-disabled'),
         ariaPressed: runtime.toggle.getAttribute('aria-pressed'),
-        tabIndex: runtime.toggle.getAttribute('tabindex')
+        tabIndex: runtime.toggle.getAttribute('tabindex'),
+        display: runtime.toggle.style.getPropertyValue('display'),
+        displayPriority: runtime.toggle.style.getPropertyPriority('display')
       } : null;
       overlay.setAttribute('data-ii-reddit-translation', 'true');
       Object.assign(overlay.style, {
@@ -11525,6 +11529,7 @@
       runtime.video.addEventListener('seeking', update);
       const syncOwnedCaptionToggle = () => {
         if (!ownsCaptionToggle || !runtime.toggle) return;
+        runtime.toggle.style.setProperty('display', 'none', 'important');
         if (!runtime.toggle.disabled) runtime.toggle.disabled = true;
         if (runtime.toggle.getAttribute('aria-disabled') !== 'true') runtime.toggle.setAttribute('aria-disabled', 'true');
         if (runtime.toggle.getAttribute('aria-pressed') !== 'true') runtime.toggle.setAttribute('aria-pressed', 'true');
@@ -11555,6 +11560,8 @@
           runtime.video.removeEventListener('seeking', update);
           runtime.toggle?.removeEventListener('click', updateAfterToggle, true);
           if (ownsCaptionToggle && runtime.toggle && captionToggleState) {
+            if (captionToggleState.display) runtime.toggle.style.setProperty('display', captionToggleState.display, captionToggleState.displayPriority);
+            else runtime.toggle.style.removeProperty('display');
             if (captionToggleState.disabledAttribute === null) runtime.toggle.removeAttribute('disabled');
             else runtime.toggle.setAttribute('disabled', captionToggleState.disabledAttribute);
             runtime.toggle.disabled = captionToggleState.disabled;
@@ -11613,6 +11620,7 @@
       const documentNode = video.ownerDocument;
       const playerRoot = video.closest('[data-testid="videoComponent"]') || video.closest('[data-testid="videoPlayer"]') || xVideoCaptionContainer(video);
       const controlStates = new Map();
+      const controlDisplays = new Map();
       const captionSelector = '[data-testid="videoCaptions"], [data-testid="videoCaption"], [data-testid="closedCaption"]';
       const captionStates = new Map();
       const isCaptionControl = (node) => {
@@ -11622,6 +11630,8 @@
       const lockCaptionControls = () => {
         for (const control of playerRoot?.querySelectorAll('button, [role="button"]') || []) {
           if (!isCaptionControl(control)) continue;
+          if (!controlDisplays.has(control)) controlDisplays.set(control, [control.style.getPropertyValue('display'), control.style.getPropertyPriority('display')]);
+          if (control.style.getPropertyValue('display') !== 'none' || control.style.getPropertyPriority('display') !== 'important') control.style.setProperty('display', 'none', 'important');
           if (!controlStates.has(control)) controlStates.set(control, ['disabled', 'aria-disabled', 'tabindex'].map((name) => [name, control.getAttribute(name)]));
           if (!control.hasAttribute('disabled')) control.setAttribute('disabled', '');
           if (control.getAttribute('aria-disabled') !== 'true') control.setAttribute('aria-disabled', 'true');
@@ -11680,7 +11690,7 @@
           if (!['subtitles', 'captions'].includes(nativeTrack.kind)) continue;
           try {
             const desiredMode = nativeTrack === controller.track || isGeneratedBilingualTrack(nativeTrack)
-              ? (nativeVideoFullscreen ? 'showing' : 'hidden')
+              ? (nativeVideoFullscreen && nativeTrack === controller.track ? 'showing' : 'disabled')
               : 'disabled';
             if (nativeTrack.mode !== desiredMode) nativeTrack.mode = desiredMode;
           } catch {
@@ -11738,6 +11748,10 @@
               if (value === null) control.removeAttribute(name);
               else control.setAttribute(name, value);
             }
+          }
+          for (const [control, [value, priority]] of controlDisplays) {
+            if (value) control.style.setProperty('display', value, priority);
+            else control.style.removeProperty('display');
           }
           for (const [surface, [value, priority]] of captionStates) {
             if (value) surface.style.setProperty('display', value, priority);
