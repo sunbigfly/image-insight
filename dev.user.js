@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         [DEV] 图像深读 · Local Loader
 // @namespace    local.image-insight.dev
-// @version      1.2.0.2
+// @version      1.3.0.1
 // @description  从本地 HTTP 服务加载图像深读主脚本，用于开发调试。
 // @match        http://*/*
 // @match        https://*/*
-// @run-at       document-idle
+// @run-at       document-start
 // @noframes
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -14,7 +14,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      *
-// @require      http://localhost:8765/main.js?v=1.2.0.2
+// @require      http://localhost:8765/main.js?v=1.3.0.1
 // ==/UserScript==
 
 /*
