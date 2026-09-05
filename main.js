@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.1
+// @version      1.3.2
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 产品契约（v1.3.1）
+ * 产品契约（v1.3.2）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端长按触发。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -46,7 +46,7 @@
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.2';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -8060,6 +8060,21 @@
     .ii-history-launcher { touch-action: none; user-select: none; }
     .ii-history-launcher:hover { opacity: 1; }
     .ii-history-launcher.is-dragging { cursor: grabbing; }
+    .ii-history-launcher[hidden] { display: none; }
+    .ii-history-launcher-open {
+      all: unset; box-sizing: border-box; display: grid; place-items: center;
+      width: 100%; height: 100%; border-radius: inherit; cursor: pointer;
+    }
+    .ii-history-launcher-close {
+      position: absolute; top: -8px; right: -8px; width: 22px; height: 22px;
+      padding: 0; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.8);
+      border-radius: 50%; color: #fff; background: #535966; cursor: pointer;
+      box-shadow: 0 2px 6px rgba(12,17,30,.2);
+    }
+    .ii-history-launcher-close:hover { background: #343b49; }
+    .ii-history-launcher-open:focus-visible, .ii-history-launcher-close:focus-visible {
+      outline: 3px solid #a5b4fc; outline-offset: 2px;
+    }
     .ii-batch-dock {
       position: fixed; left: 50%; bottom: 24px; display: none; align-items: center; gap: 9px;
       min-height: 50px; padding: 7px 8px 7px 14px; border: 1px solid rgba(255,255,255,.22);
@@ -8296,12 +8311,9 @@
     hoverRoot = hoverHost.attachShadow({ mode: 'closed' });
     const hoverStyle = document.createElement('style');
     hoverStyle.textContent = HOVER_CSS;
-    historyLauncher = document.createElement('button');
+    historyLauncher = document.createElement('div');
     historyLauncher.className = 'ii-history-launcher';
-    historyLauncher.type = 'button';
-    historyLauncher.title = '打开图像深读历史（可拖动，按网站记住位置）';
-    historyLauncher.setAttribute('aria-label', '打开图像深读历史');
-    historyLauncher.innerHTML = icon('history', 20);
+    historyLauncher.innerHTML = `<button type="button" class="ii-history-launcher-open" title="打开图像深读历史（可拖动，按网站记住位置）" aria-label="打开图像深读历史">${icon('history', 20)}</button><button type="button" class="ii-history-launcher-close" title="关闭历史入口（刷新页面后恢复）" aria-label="关闭历史入口">${icon('close', 12)}</button>`;
     batchDock = document.createElement('div');
     batchDock.className = 'ii-batch-dock';
     batchDock.setAttribute('role', 'toolbar');
@@ -8481,6 +8493,10 @@
       });
     };
     button.addEventListener('pointerdown', (event) => {
+      if (event.target.closest?.('.ii-history-launcher-close')) {
+        event.stopPropagation();
+        return;
+      }
       if (!event.isPrimary || event.button !== 0) return;
       event.stopPropagation();
       suppressClick = false;
@@ -8525,6 +8541,11 @@
     button.addEventListener('lostpointercapture', finish);
     button.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (event.target.closest?.('.ii-history-launcher-close')) {
+        event.preventDefault();
+        button.hidden = true;
+        return;
+      }
       if (suppressClick && event.detail !== 0) {
         event.preventDefault();
         suppressClick = false;

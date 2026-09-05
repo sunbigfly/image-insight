@@ -4,7 +4,7 @@
   <strong>让网页图片、GIF 与视频从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
-  <img alt="版本" src="https://img.shields.io/badge/version-1.3.1-536af5">
+  <img alt="版本" src="https://img.shields.io/badge/version-1.3.2-536af5">
   <a href="https://github.com/sunbigfly/image-insight/blob/main/LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
@@ -40,7 +40,7 @@
 
 ### 对话、历史与站点
 
-- 右下角历史入口支持鼠标或触屏拖动，按网站保存位置；同站换页、刷新后恢复，窗口缩小时保持可见。
+- 右下角历史入口支持鼠标或触屏拖动，按网站保存位置；同站换页、刷新后恢复，窗口缩小时保持可见。点击右上角「×」可在当前页面隐藏入口，刷新后恢复，油猴菜单仍可打开历史。
 
 - 对话会沿用媒体、基础解析、字幕、页面上下文与 Responses 会话链。
 - 双语字幕完成后立即建立本地视频会话；后续视频深读会在同一条记录中补全关键帧和整体结论。
