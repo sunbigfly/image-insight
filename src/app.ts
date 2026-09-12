@@ -1,6 +1,6 @@
 import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOptions, SiteRule, DecodedBitmap, MediaError } from './media-types';
 /*
- * 产品契约（v1.3.6）
+ * 产品契约（v1.3.7）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端点击媒体右上角图标或长按后显示的识别按钮开始解析。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -27,7 +27,7 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.6';
+  const APP_VERSION = '1.3.7';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -8084,19 +8084,26 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
     .ii-hover-select { color: #273474; background: rgba(245,246,255,.94); border-color: rgba(89,107,226,.45); }
     .ii-hover-select.is-selected { color: white; background: #5364df; }
     .ii-history-launcher {
-      position: fixed; right: 18px; bottom: 70px; width: 42px; height: 42px; display: grid; place-items: center;
-      border: 1px solid rgba(255,255,255,.72); border-radius: 13px; color: white; background: rgba(23,32,51,.9);
-      box-shadow: 0 8px 28px rgba(12,17,30,.26); cursor: pointer; pointer-events: auto; opacity: .82;
+      position: fixed; right: 18px; bottom: 70px; width: 44px; height: 44px; display: grid; place-items: center;
+      border: 0; border-radius: 10px; color: rgba(255,255,255,.94); background: transparent;
+      cursor: pointer; pointer-events: auto;
       transition: opacity .14s ease, transform .14s ease;
     }
+    .ii-history-launcher::before {
+      content: ''; position: absolute; inset: 6px; border-radius: 10px; pointer-events: none;
+      border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.28);
+      box-shadow: 0 1px 6px rgba(12,17,30,.14); backdrop-filter: blur(5px);
+    }
     .ii-history-launcher { touch-action: none; user-select: none; }
-    .ii-history-launcher:hover { opacity: 1; }
+    .ii-history-launcher:hover::before { background: rgba(255,255,255,.44); }
     .ii-history-launcher.is-dragging { cursor: grabbing; }
     .ii-history-launcher[hidden] { display: none; }
     .ii-history-launcher-open {
       all: unset; box-sizing: border-box; display: grid; place-items: center;
       width: 100%; height: 100%; border-radius: inherit; cursor: pointer;
     }
+    .ii-history-launcher svg { position: relative; filter: drop-shadow(0 1px 2px rgba(12,17,30,.6)); }
+    .ii-history-launcher-open svg { width: 16px; height: 16px; }
     .ii-touch-recognition-menu {
       position: fixed; z-index: 10; display: flex; align-items: center; gap: 4px; padding: 4px;
       max-width: calc(100vw - 24px); border: 1px solid rgba(255,255,255,.72); border-radius: 14px;
@@ -8113,12 +8120,17 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
     .ii-touch-recognition-menu button:active { filter: brightness(.9); }
     .ii-touch-recognition-menu button:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 2px; }
     .ii-history-launcher-close {
-      position: absolute; top: -8px; right: -8px; width: 22px; height: 22px;
-      padding: 0; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.8);
-      border-radius: 50%; color: #fff; background: #535966; cursor: pointer;
-      box-shadow: 0 2px 6px rgba(12,17,30,.2);
+      position: absolute; top: -6px; right: -6px; width: 24px; height: 24px;
+      padding: 0; display: grid; place-items: center; border: 0;
+      border-radius: 50%; color: rgba(255,255,255,.94); background: transparent; cursor: pointer;
     }
-    .ii-history-launcher-close:hover { background: #343b49; }
+    .ii-history-launcher-close::before {
+      content: ''; position: absolute; inset: 5px; border-radius: inherit; pointer-events: none;
+      border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.28);
+      box-shadow: 0 1px 3px rgba(12,17,30,.14); backdrop-filter: blur(5px);
+    }
+    .ii-history-launcher-close svg { width: 10px; height: 10px; }
+    .ii-history-launcher-close:hover::before { background: rgba(255,255,255,.5); }
     .ii-history-launcher-open:focus-visible, .ii-history-launcher-close:focus-visible, .ii-dock-button:focus-visible {
       outline: 3px solid #a5b4fc; outline-offset: 2px;
     }
@@ -8174,12 +8186,10 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
     @keyframes ii-pop { from { opacity: 0; transform: scale(.88); } }
     @keyframes ii-task-complete { 45% { transform: scale(1.16); box-shadow: 0 0 0 8px rgba(115,214,159,.18), 0 10px 32px rgba(12,17,30,.3); } }
     :host([data-ii-touch-entry]) .ii-history-launcher {
-      box-sizing: border-box; width: 48px; height: 48px; padding: 1px;
+      box-sizing: border-box; width: 44px; height: 44px; padding: 0;
       right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-      border-radius: 16px; background: #172033; opacity: 1;
     }
     :host([data-ii-touch-entry]) .ii-history-launcher.is-picking { visibility: hidden; pointer-events: none; }
-    :host([data-ii-touch-entry]) .ii-history-launcher-open { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; }
     :host([data-ii-touch-entry]) .ii-dock-button:active { filter: brightness(.9); }
     :host([data-ii-touch-entry]) .ii-batch-dock {
       box-sizing: border-box; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
@@ -8645,23 +8655,23 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
           :host([hidden]) { display: none; }
           .entry { position: absolute; left: var(--ii-entry-x, 0px); top: var(--ii-entry-y, 0px);
             width: var(--ii-entry-width, 100%); height: 0; pointer-events: none; }
-          button { position: absolute; top: 12px; right: 12px; display: grid; place-items: center;
-            box-sizing: border-box; width: 44px; height: 44px; padding: 4px; border: 0;
-            border-radius: 12px; background: transparent; color: white; cursor: pointer;
+          button { position: absolute; top: 8px; right: 8px; display: grid; place-items: center;
+            box-sizing: border-box; width: 44px; height: 44px; padding: 8px; border: 0;
+            border-radius: 8px; background: transparent; color: rgba(255,255,255,.94); cursor: pointer;
             pointer-events: auto; touch-action: manipulation; }
-          button::before { content: ''; position: absolute; inset: 4px; border-radius: 10px;
-            border: 1px solid rgba(255,255,255,.72); background: rgba(23,32,51,.8);
-            box-shadow: 0 2px 8px rgba(12,17,30,.2); }
-          button:hover::before { background: #3446b7; }
-          button:active::before { background: #26368e; }
+          button::before { content: ''; position: absolute; inset: 8px; border-radius: 8px;
+            border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.28);
+            box-shadow: 0 1px 6px rgba(12,17,30,.14); backdrop-filter: blur(5px); pointer-events: none; }
+          button:hover::before { background: rgba(255,255,255,.44); }
+          button:active::before { background: rgba(255,255,255,.2); }
           button:focus-visible { outline: 3px solid #7180e7; outline-offset: 2px; }
-          svg { position: relative; }
+          svg { position: relative; filter: drop-shadow(0 1px 2px rgba(12,17,30,.6)); }
         `;
         const row = document.createElement('div');
         row.className = 'entry';
         const button = document.createElement('button');
         button.type = 'button';
-        button.innerHTML = icon('scan', 20);
+        button.innerHTML = icon('scan', 16);
         row.append(button);
         root.append(style, row);
         // Visually overlay the media while keeping events outside its resize handlers and links.
