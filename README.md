@@ -4,7 +4,7 @@
   <strong>让网页图片、GIF 与视频从“看见”变成“看懂”</strong>
   <br><br>
   <a href="https://greasyfork.org/zh-CN/scripts/594142-%E5%9B%BE%E5%83%8F%E6%B7%B1%E8%AF%BB-image-insight"><img alt="安装脚本" src="https://img.shields.io/badge/Greasy%20Fork-安装脚本-536af5"></a>
-  <img alt="版本" src="https://img.shields.io/badge/version-1.3.5-536af5">
+  <img alt="版本" src="https://img.shields.io/badge/version-1.3.6-536af5">
   <a href="https://github.com/sunbigfly/image-insight/blob/main/LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-f5de53"></a>
 </div>
 
@@ -18,6 +18,8 @@
 - **GIF 时间序列理解**：本地预览保留原动图，模型侧按时长和画面变化选取最多 9 张关键帧，以压缩时间板理解动作与前后变化。
 - **按需深度线索**：基础解析完成后，可单独补充可能来源，以及地点、时代、物种、商品、人物或真实性等与当前内容有关的线索。
 - **任务队列与上传门禁**：图片和视频最多同时处理 2 个任务，其余任务自动排队；所有视觉输入在发出前统一检查尺寸、像素、编码体积与视觉 patch 数。
+
+Reddit 帖子、正文和评论的文字翻译已独立到 `D:\OneDrive\桌面\forum-translater`，使用独立的 `dev.user.js`。本脚本保留图片深读和视频双语字幕，两者可分别启停。
 
 ## 能力一览
 
@@ -55,7 +57,7 @@
 2. 从油猴菜单打开设置，填写兼容 OpenAI Responses API 的地址、API Key 和模型。
    如接口与账户支持 Fast 模式，可在“接口”页手动开启；默认关闭，关闭时请求不会携带 `service_tier`。
 3. 如需为无页面 CC 的视频生成字幕，再配置兼容 `/audio/transcriptions` 的转写接口；也可直接使用 Groq 快速配置。
-4. 将鼠标移到媒体上并点击入口；触屏设备可长按触发。图片和 GIF 会直接解析，视频会先生成双语字幕。
+4. 桌面端将鼠标移到媒体上并点击入口；移动端点击图片或视频右上角的识别图标，也可长按显示入口。图片和 GIF 优先在宿主媒体旁显示解析结果，窄屏卡片排列在图片下方；视频会先生成双语字幕。
 5. 需要理解视频画面与完整内容时，点击播放器下方的“解析视频内容”。
 
 脚本会注入 HTTP(S) 页面，但只有命中内置或自定义站点规则的媒体才显示入口。未配置的站点不会嗅探媒体。
@@ -84,14 +86,29 @@ API Key 保存在油猴脚本存储中，不写入网页、历史记录或导出
 - GIF 关键帧解析依赖浏览器的 `ImageDecoder` 能力，建议使用新版 Chromium 浏览器。
 - 模型和转写服务的计费、数据保留与可用性由相应服务商决定。
 
-## 本地调试
+## Windows 本地开发：直接文件 Loader
 
-```bash
-cd /home/sunbigfly/mywork/image-insight
-python3 -m http.server 8765 --bind 127.0.0.1
-```
+目录：`D:\OneDrive\桌面\image-insight`。原 Linux 仓库保留；后续修改以 Windows 目录为准。
 
-在 Tampermonkey 中安装并启用 [`dev.user.js`](dev.user.js)，同时关闭正式版脚本。修改 `main.js` 后递增 Loader 中 `@require` 的 `v` 参数并重新保存，即可刷新本地依赖缓存。
+1. 在浏览器的扩展管理页，进入 Tampermonkey 详情，打开「允许访问文件网址」。油猴自己的「脚本访问本地文件」设置应允许 `@require / @resource`（如已允许则不用修改）。
+2. 将本目录的 [`dev.user.js`](dev.user.js) 安装／更新到油猴，启用它，关闭旧正式版。Loader 保留原 name/namespace；更新已有 Loader 可保留对应脚本存储。
+3. 直接刷新目标网页。**不需要 HTTP 服务，不需要启动 `start-dev.cmd`，不需要修改 Loader 版本号。**
+
+固定 Loader 使用原生 `@require file:///D:/OneDrive/.../image-insight/main.js`，由油猴直接读取并执行本地 JS；不下载 HTTP 代码、不使用 `new Function`。本机 Chrome Tampermonkey 5.5.0 的外部依赖代码明确为 `file:` 跳过缓存读取和写入；这是安装源码核验，实际浏览器权限与页面执行仍需验收。
+
+TS 不能直接由浏览器执行。修改 `src/app.ts` 后运行 `npm run build`（也可双击 [`build.cmd`](build.cmd)），将源码编译到 `main.js`；**构建完成后用户只需刷新页面**。本轮已经构建完成。`npm run dev` 现在只是一次构建的兼容别名，不启动服务。
+
+| 路径 | 用途 |
+| --- | --- |
+| `src/app.ts` | 媒体、设置、历史、字幕与启动逻辑的 TypeScript 入口 |
+| `src/media-types.ts`、`src/browser.d.ts` | 媒体兼容类型和浏览器声明 |
+| `src/dev-loader.ts`、`src/dev-entry.ts`、`src/dev.meta.txt` | 固定文件 Loader 源码与元数据 |
+| `src/userscript.meta.txt` | 正式脚本元数据 |
+| `main.js`、`dev.user.js` | `npm run build` 生成的可安装产物，不直接编辑 |
+
+验证命令：`npm run verify`。Loader 和测试启用 strict；媒体主体已纳入 TS 编译检查，异构历史记录、模型响应和部分媒体状态暂用 `MediaRecord` 兼容类型，没有 `@ts-nocheck` 或 `@ts-ignore`。不宣称全项目已完成严格领域建模。
+
+媒体主体擦除类型、规范化语法并忽略两个未使用的兼容 rest 参数后，与迁移前 JS 的执行代码哈希一致。测试、构建及本地文件路径检查不替代真实油猴／媒体验收。油猴原生依赖机制见 [官方 @require 文档](https://www.tampermonkey.net/documentation.php?locale=en&q=meta:require)。
 
 ## License
 

@@ -16,16 +16,5 @@
 // @connect      *
 // @updateURL    none
 // @downloadURL  none
-// @require      file:///D:/OneDrive/%E6%A1%8C%E9%9D%A2/image-insight/main.js
+// @require      __LOCAL_MAIN_FILE__
 // ==/UserScript==
-
-"use strict";
-(() => {
-  // src/dev-loader.ts
-  function runDevelopmentLoader() {
-    console.info("[图像深读 DEV] 已通过 Windows 本地文件加载；构建后刷新网页即可更新。");
-  }
-
-  // src/dev-entry.ts
-  runDevelopmentLoader();
-})();
