@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.8
+// @version      1.3.9
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -27,7 +27,7 @@
   (function() {
     "use strict";
     const APP_NAME = "图像深读";
-    const APP_VERSION = "1.3.8";
+    const APP_VERSION = "1.3.9";
     const ANALYSIS_CONTRACT_VERSION = 21;
     const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
     const INSTANCE_ATTRIBUTE = "data-image-insight-host";
@@ -7804,6 +7804,7 @@ ${context.raw}`).join("\n\n").slice(0, MAX_CONTEXT_CHARS * 2),
       position: relative; inset: auto; display: flex; width: 100%; min-width: 0; max-width: none;
       min-height: 44px; margin: 0 0 8px; padding: 4px 6px 4px 12px; box-shadow: none;
     }
+    .ii-host-follow-layer.is-inline .ii-host-follow-header.is-settled { display: none; }
     .ii-host-follow-layer.is-inline .ii-host-follow-caption { display: block; flex: 1; font-size: 13px; }
     .ii-host-follow-layer.is-inline .ii-host-follow-header-button { min-width: 36px; min-height: 36px; }
     .ii-host-follow-layer.is-inline .is-settled .ii-host-follow-elapsed,

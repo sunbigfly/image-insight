@@ -1,6 +1,6 @@
 import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOptions, SiteRule, DecodedBitmap, MediaError } from './media-types';
 /*
- * 产品契约（v1.3.8）
+ * 产品契约（v1.3.9）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端点击媒体右上角图标或长按后显示的识别按钮开始解析。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -27,7 +27,7 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.8';
+  const APP_VERSION = '1.3.9';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -8327,6 +8327,7 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
       position: relative; inset: auto; display: flex; width: 100%; min-width: 0; max-width: none;
       min-height: 44px; margin: 0 0 8px; padding: 4px 6px 4px 12px; box-shadow: none;
     }
+    .ii-host-follow-layer.is-inline .ii-host-follow-header.is-settled { display: none; }
     .ii-host-follow-layer.is-inline .ii-host-follow-caption { display: block; flex: 1; font-size: 13px; }
     .ii-host-follow-layer.is-inline .ii-host-follow-header-button { min-width: 36px; min-height: 36px; }
     .ii-host-follow-layer.is-inline .is-settled .ii-host-follow-elapsed,
