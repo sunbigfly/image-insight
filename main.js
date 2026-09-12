@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.7
+// @version      1.3.8
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
@@ -27,7 +27,7 @@
   (function() {
     "use strict";
     const APP_NAME = "图像深读";
-    const APP_VERSION = "1.3.7";
+    const APP_VERSION = "1.3.8";
     const ANALYSIS_CONTRACT_VERSION = 21;
     const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
     const INSTANCE_ATTRIBUTE = "data-image-insight-host";
@@ -3808,6 +3808,31 @@ ${contextAfter}
       const signature = new TextDecoder("ascii").decode(await blob.slice(0, 6).arrayBuffer());
       return signature === "GIF87a" || signature === "GIF89a";
     }
+    async function normalizeDownloadedImageBlob(blob) {
+      if (blob.type.toLowerCase().startsWith("image/")) return blob;
+      const bytes = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+      const matches = (offset, signature) => signature.every((byte, index) => bytes[offset + index] === byte);
+      const text = (start, end) => String.fromCharCode(...bytes.slice(start, end));
+      let type = "";
+      if (matches(0, [137, 80, 78, 71, 13, 10, 26, 10])) type = "image/png";
+      else if (matches(0, [255, 216, 255])) type = "image/jpeg";
+      else if (["GIF87a", "GIF89a"].includes(text(0, 6))) type = "image/gif";
+      else if (text(0, 4) === "RIFF" && text(8, 12) === "WEBP") type = "image/webp";
+      else if (text(0, 2) === "BM") type = "image/bmp";
+      else if (text(4, 8) === "ftyp") {
+        const boxSize = new DataView(bytes.buffer).getUint32(0);
+        const end = Math.min(boxSize, bytes.length);
+        for (let offset = 8; offset + 4 <= end; offset += 4) {
+          if (offset === 12) continue;
+          if (["avif", "avis"].includes(text(offset, offset + 4))) {
+            type = "image/avif";
+            break;
+          }
+        }
+      }
+      if (!type) throw new Error("目标地址返回的不是图片。");
+      return blob.slice(0, blob.size, type);
+    }
     function imageDecoderClass() {
       const pageWindow = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
       return pageWindow.ImageDecoder || globalThis.ImageDecoder || null;
@@ -4201,15 +4226,14 @@ ${contextAfter}
       const fallbackSource = getImageFallbackSource(image);
       let blob;
       try {
-        blob = await sourceToBlob(source, conversation);
+        blob = await normalizeDownloadedImageBlob(await sourceToBlob(source, conversation));
       } catch (error) {
         assertAnalysisTaskActive(conversation);
         if (!fallbackSource || fallbackSource === source) throw error;
         source = fallbackSource;
-        blob = await sourceToBlob(source, conversation);
+        blob = await normalizeDownloadedImageBlob(await sourceToBlob(source, conversation));
       }
       const isGif = await blobIsGif(blob);
-      if (!blob.type.startsWith("image/") && !isGif) throw new Error("目标地址返回的不是图片。");
       return {
         source,
         blob,

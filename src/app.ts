@@ -1,6 +1,6 @@
 import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOptions, SiteRule, DecodedBitmap, MediaError } from './media-types';
 /*
- * 产品契约（v1.3.7）
+ * 产品契约（v1.3.8）
  * 1. 脚本注入所有 HTTP(S) 页面，但只处理命中内置或自定义站点规则的实际可见图片、视频及 Reddit GIF 播放器；桌面端悬停显示解析入口，图片另有多选入口，触屏端点击媒体右上角图标或长按后显示的识别按钮开始解析。
  *    默认启用 X/Twitter 与 Reddit；其他网站须先在设置中添加 URL 与 CSS 上下文规则。
  * 2. 只有用户主动触发后才读取媒体并调用 AI，不自动扫描或上传页面内容。
@@ -27,7 +27,7 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
   'use strict';
 
   const APP_NAME = '图像深读';
-  const APP_VERSION = '1.3.7';
+  const APP_VERSION = '1.3.8';
   const ANALYSIS_CONTRACT_VERSION = 21;
   const SUBTITLE_TIMELINE_CONTRACT_VERSION = 2;
   const INSTANCE_ATTRIBUTE = 'data-image-insight-host';
@@ -4147,6 +4147,34 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
     return signature === 'GIF87a' || signature === 'GIF89a';
   }
 
+  async function normalizeDownloadedImageBlob(blob) {
+    if (blob.type.toLowerCase().startsWith('image/')) return blob;
+    // Some mobile userscript managers omit the MIME type of binary responses.
+    // Check the file itself instead of trusting its URL or generic response type.
+    const bytes = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+    const matches = (offset, signature) => signature.every((byte, index) => bytes[offset + index] === byte);
+    const text = (start, end) => String.fromCharCode(...bytes.slice(start, end));
+    let type = '';
+    if (matches(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) type = 'image/png';
+    else if (matches(0, [0xff, 0xd8, 0xff])) type = 'image/jpeg';
+    else if (['GIF87a', 'GIF89a'].includes(text(0, 6))) type = 'image/gif';
+    else if (text(0, 4) === 'RIFF' && text(8, 12) === 'WEBP') type = 'image/webp';
+    else if (text(0, 2) === 'BM') type = 'image/bmp';
+    else if (text(4, 8) === 'ftyp') {
+      const boxSize = new DataView(bytes.buffer).getUint32(0);
+      const end = Math.min(boxSize, bytes.length);
+      for (let offset = 8; offset + 4 <= end; offset += 4) {
+        if (offset === 12) continue; // The minor version is not a file brand.
+        if (['avif', 'avis'].includes(text(offset, offset + 4))) {
+          type = 'image/avif';
+          break;
+        }
+      }
+    }
+    if (!type) throw new Error('目标地址返回的不是图片。');
+    return blob.slice(0, blob.size, type);
+  }
+
   function imageDecoderClass() {
     const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
     return pageWindow.ImageDecoder || globalThis.ImageDecoder || null;
@@ -4560,15 +4588,14 @@ import type { MediaRecord, FontOverrides, SubtitleOptions, ApiOptions, StageOpti
     const fallbackSource = getImageFallbackSource(image);
     let blob;
     try {
-      blob = await sourceToBlob(source, conversation);
+      blob = await normalizeDownloadedImageBlob(await sourceToBlob(source, conversation));
     } catch (error) {
       assertAnalysisTaskActive(conversation);
       if (!fallbackSource || fallbackSource === source) throw error;
       source = fallbackSource;
-      blob = await sourceToBlob(source, conversation);
+      blob = await normalizeDownloadedImageBlob(await sourceToBlob(source, conversation));
     }
     const isGif = await blobIsGif(blob);
-    if (!blob.type.startsWith('image/') && !isGif) throw new Error('目标地址返回的不是图片。');
     return {
       source,
       blob,

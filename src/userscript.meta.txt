@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         图像深读 · Image Insight
 // @namespace    https://github.com/sunbigfly/image-insight
-// @version      1.3.7
+// @version      1.3.8
 // @description  主动解析网页图片与视频字幕，在对应区域旁展示中文理解，并基于页面上下文继续对话。
 // @author       sunbigfly
 // @license      MIT
